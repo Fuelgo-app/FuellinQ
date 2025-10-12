@@ -26,12 +26,12 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # ⬇️ Attempt + fallback zodat we 'npm ci' proberen, maar Rollup-bug omzeilen als het moet
-      - name: Install deps (try ci, then fallbacks)
+      # Stable install: voorkomt Rollup native binary issues op Actions
+      - name: Clean & install deps (stable for Rollup)
         run: |
-          npm ci --no-optional || \
-          (npm cache clean --force && rm -rf node_modules && npm ci --no-optional) || \
-          (rm -rf node_modules package-lock.json && npm i --no-audit --no-fund --no-optional)
+          npm cache clean --force || true
+          rm -rf node_modules package-lock.json
+          npm i --no-audit --no-fund
 
       - name: Build
         env:
