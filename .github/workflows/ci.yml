@@ -19,14 +19,20 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install deps
+
+      # ⬇️ Attempt + fallback zodat we 'npm ci' proberen, maar Rollup-bug omzeilen als het moet
+      - name: Install deps (try ci, then fallbacks)
         run: |
-          if [ -f package-lock.json ]; then npm ci; else npm i; fi
+          npm ci --no-optional || \
+          (npm cache clean --force && rm -rf node_modules && npm ci --no-optional) || \
+          (rm -rf node_modules package-lock.json && npm i --no-audit --no-fund --no-optional)
+
       - name: Build
         env:
           VITE_API_URL: http://localhost:3000
@@ -37,6 +43,7 @@ jobs:
           else
             npx vite build
           fi
+
       - name: Upload build artifact (optional)
         if: success()
         uses: actions/upload-artifact@v4
@@ -52,14 +59,17 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: backend/package-lock.json
+
       - name: Install deps
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm i; fi
+
       - name: Health check (files & syntax)
         run: |
           test -f server.js || (echo "server.js not found" && exit 1)
