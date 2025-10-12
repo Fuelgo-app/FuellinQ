@@ -1,0 +1,348 @@
+/* ==========================================================================
+   Design tokens (brand.js kan ze live overschrijven op :root)
+   ========================================================================== */
+:root{
+  /* Basis */
+  --bg:#f6f7fb;
+  --surface:#ffffff;
+  --text:#0f172a;
+  --muted:#6b7280;
+  --border:#e5e7eb;
+
+  /* Merkkleuren (alias voor oudere code inbegrepen) */
+  --brand-primary:#0b3654;
+  --brand-secondary:#2563eb;
+  --brand:var(--brand-primary);
+  --brand-2:var(--brand-secondary);
+
+  /* Buttons */
+  --btn-bg:var(--brand-secondary);
+  --btn-text:#ffffff;
+
+  /* Radius & schaduw */
+  --radius:14px;
+}
+
+/* ==========================================================================
+   Basis
+   ========================================================================== */
+*{box-sizing:border-box}
+html,body,#root{height:100%}
+body{
+  margin:0;
+  font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+}
+a{color:var(--brand-2);text-decoration:none}
+a:hover{text-decoration:underline}
+
+.container{max-width:1160px;margin:0 auto;padding:0 16px}
+.p-2{padding:8px}.p-3{padding:12px}.p-4{padding:16px}
+.mb-2{margin-bottom:8px}.mb-3{margin-bottom:12px}.mb-4{margin-bottom:16px}
+.grid{display:grid;gap:12px}
+.grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+
+/* Line clamp helpers (zonder IDE warnings) */
+.line-clamp-2,.line-clamp-3{overflow:hidden}
+@supports (-webkit-line-clamp:1){
+  .line-clamp-2,.line-clamp-3{display:-webkit-box;-webkit-box-orient:vertical}
+  .line-clamp-2{-webkit-line-clamp:2}
+  .line-clamp-3{-webkit-line-clamp:3}
+}
+
+/* ==========================================================================
+   Header / Top nav
+   ========================================================================== */
+.header{background:#fff;border-bottom:1px solid var(--border)}
+.header-inner{display:flex;align-items:center;justify-content:space-between;padding:12px 0}
+.brand{display:flex;align-items:center;gap:10px}
+.brand img{height:40px;width:auto;border-radius:8px;display:block}
+.brand-name{font-weight:800;color:var(--brand)}
+
+.nav{display:flex;gap:8px;flex-wrap:wrap}
+.nav a,.nav button{
+  border:1px solid var(--border);
+  background:#fff;border-radius:999px;padding:8px 12px;
+  font-weight:600;color:#111;text-decoration:none;
+}
+.nav a.active{border-color:transparent;background:#0f172a;color:#fff}
+.nav .ghost{border-color:transparent;background:transparent;color:var(--brand-2)}
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+.btn{
+  background:var(--btn-bg);color:var(--btn-text);
+  border:1px solid transparent;border-radius:10px;
+  padding:10px 14px;font-weight:700;cursor:pointer;
+  text-decoration:none;display:inline-flex;align-items:center;gap:8px;
+}
+.btn:hover{filter:brightness(.95)}
+.btn-outline{
+  background:#fff;color:#111;border:1px solid var(--border);
+  border-radius:10px;padding:10px 14px;font-weight:700;
+  text-decoration:none;display:inline-flex;align-items:center;gap:8px;
+}
+.btn-ghost{background:transparent;border:1px solid transparent;color:var(--brand-2);font-weight:700}
+.btn-icon{
+  display:inline-flex;align-items:center;gap:8px;background:#fff;color:#111;
+  border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-weight:700;cursor:pointer;
+}
+.btn-icon.btn-solid{background:var(--btn-bg);color:var(--btn-text);border-color:transparent}
+
+/* ==========================================================================
+   Inputs
+   ========================================================================== */
+.input{
+  height:44px;border:1px solid var(--border);border-radius:10px;
+  padding:0 12px;outline:none;width:100%;background:#fff;color:var(--text);
+}
+.input:focus{border-color:#c7d2fe;box-shadow:0 0 0 3px #e0e7ff}
+
+/* ==========================================================================
+   Cards / tables
+   ========================================================================== */
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);box-shadow:0 8px 24px rgba(2,6,23,.06);
+}
+.table{width:100%;border-collapse:separate;border-spacing:0}
+.table thead th{
+  position:sticky;top:0;background:#f8fafc;color:#475569;
+  text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;
+}
+.table tbody td{padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:14px}
+.table tbody tr:nth-child(even){background:#fcfcfd}
+
+/* ==========================================================================
+   Pills & Chips
+   ========================================================================== */
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill{
+  border:1px solid var(--border);background:#fff;border-radius:999px;
+  padding:8px 12px;font-weight:700;cursor:pointer;color:#111;
+}
+.pill.active{background:var(--brand-2);border-color:transparent;color:#fff}
+
+.chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{
+  font-size:12px;padding:3px 8px;border-radius:999px;
+  border:1px solid var(--border);background:#fff;color:#334155;
+}
+.chip.on{background:var(--brand-2);border-color:transparent;color:#fff}
+
+/* ==========================================================================
+   Sidebar (App layout)
+   ========================================================================== */
+.sidebar{position:sticky;top:12px}
+.sidebar .section-title{font-weight:800;color:var(--brand);margin:4px 0 10px}
+.sidebar .list{display:grid;gap:10px;padding:0;margin:0;list-style:none}
+.sidebar a{
+  display:block;border-radius:10px;padding:8px 10px;border:1px solid transparent;
+  color:var(--text);text-decoration:none;
+}
+.sidebar a:hover{background:#f9fafb;border-color:var(--border);text-decoration:none}
+
+/* NavLink helper */
+.nav-link{
+  display:block;border-radius:10px;padding:10px 12px;color:var(--text);
+  text-decoration:none;border:1px solid transparent;
+}
+.nav-link:hover{background:#f9fafb;border-color:var(--border);text-decoration:none}
+.nav-link.active{background:var(--brand-2);color:#fff;border-color:transparent}
+
+/* ==========================================================================
+   Wallet badges
+   ========================================================================== */
+.wallet-row{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+.wallet-btn{
+  display:inline-flex;align-items:center;gap:10px;border:1px solid var(--border);
+  background:#000;color:#fff;border-radius:12px;padding:10px 14px;font-weight:700;text-decoration:none;
+}
+.wallet-btn.google{background:#fff;color:#111}
+.wallet-btn svg{height:18px;width:18px;display:block}
+
+/* ==========================================================================
+   Footer
+   ========================================================================== */
+.footer{color:var(--muted);font-size:13px;padding:20px 0}
+.footer a{color:inherit}
+
+/* ==========================================================================
+   Offer cards – compact & professioneel
+   ========================================================================== */
+.offer-card{
+  --offer-media-h:180px;                 /* standaard fotoband-hoogte */
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  background:var(--surface);
+  box-shadow:0 8px 24px rgba(2,6,23,.06);
+  overflow:hidden;
+}
+@media (min-width:1024px){
+  .offer-card{ --offer-media-h:160px; }  /* iets compacter op desktop */
+}
+
+.offer-media{
+  position:relative;
+  height:var(--offer-media-h);
+  background:#f3f4f6;
+}
+.offer-media img{width:100%;height:100%;object-fit:cover;display:block}
+
+/* Overlays / badges */
+.offer-badges{
+  position:absolute;top:10px;left:10px;right:10px;
+  display:flex;gap:8px;align-items:center;
+}
+.badge{
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  background:rgba(17,24,39,.55);color:#fff;border-radius:999px;
+  padding:6px 10px;font-weight:800;font-size:12px;
+  display:inline-flex;align-items:center;gap:6px;
+  box-shadow:0 1px 2px rgba(0,0,0,.2);
+}
+.badge.secondary{margin-left:auto;background:rgba(255,255,255,.92);color:#0f172a}
+
+/* Subtiele onder-gradient voor leesbaarheid (alleen binnen kaart) */
+.offer-card .offer-media::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:20%;
+  background:linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(0,0,0,.25) 100%);
+  pointer-events:none;
+}
+.offer-card.no-gradient .offer-media::after{content:none}
+
+.offer-content{padding:12px 14px 0 14px}
+.offer-title{margin:0;font-weight:800;font-size:18px;color:var(--brand)}
+.offer-sub{margin:4px 0 10px 0;color:var(--muted)}
+
+/* Weekdagen als nette chips (Ma–Zo) */
+.weekline{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.weekline .day{
+  font-size:12px;padding:3px 8px;border-radius:999px;
+  border:1px solid var(--border);background:#fff;color:#334155;
+}
+.weekline .day.on{background:var(--brand-2);border-color:transparent;color:#fff}
+
+.offer-actions{
+  display:flex;gap:10px;justify-content:space-between;padding:10px 14px 14px;
+}
+
+/* Responsive grid voor offers (kleine strakke kaarten) */
+.offers-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+  gap:16px;
+}
+/* Instagram-achtige gallerij */
+.ig-grid{
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap:14px;
+}
+@media (min-width:1024px){
+  .ig-grid{ grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:16px; }
+}
+
+.ig-tile{
+  position:relative; aspect-ratio:1/1; border-radius:14px; overflow:hidden;
+  background:#f1f5f9; box-shadow:0 2px 8px rgba(15,23,42,.05);
+  transition: transform .15s ease, box-shadow .2s ease;
+}
+.ig-tile:hover{ transform:translateY(-2px); box-shadow:0 8px 24px rgba(15,23,42,.08); }
+.ig-tile>img{ width:100%; height:100%; object-fit:cover; display:block; }
+
+.ig-cap{
+  position:absolute; left:0; right:0; bottom:0; padding:10px 12px;
+  background:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.45) 100%);
+  color:#fff;
+}
+.ig-title{ font-weight:800; font-size:13px; line-height:1.25; }
+
+.ig-badge{
+  position:absolute; left:8px; top:8px; padding:4px 8px; border-radius:999px;
+  background:rgba(255,255,255,.92); color:#0f172a; font-weight:700; font-size:12px;
+  box-shadow:0 1px 2px rgba(0,0,0,.12);
+}
+.ig-status{ position:absolute; right:8px; top:8px; padding:4px 8px; border-radius:999px; font-weight:800; font-size:12px; color:#fff; background:#6b7280; }
+.ig-status.ok{ background:#16a34a; } .ig-status.blue{ background:#2563eb; } .ig-status.gray{ background:#6b7280; }
+
+.ig-actions{
+  position:absolute; inset:auto 8px 8px 8px; display:flex; gap:8px; justify-content:space-between;
+  opacity:0; transform:translateY(6px); transition:opacity .14s ease, transform .14s ease;
+}
+.ig-tile:hover .ig-actions{ opacity:1; transform:translateY(0); }
+
+/* Noodrem: ook in “Kaarten”-view compacter */
+.offer-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:16px; }
+/* ===== Partner Offers – hard/veilig gescoped ===== */
+#partner-offers .ig-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(180px,1fr));
+  gap:14px;
+}
+@media (min-width:1024px){
+  #partner-offers .ig-grid{
+    grid-template-columns:repeat(auto-fill, minmax(200px,1fr));
+    gap:16px;
+  }
+}
+#partner-offers .ig-tile{
+  position:relative;
+  aspect-ratio:1 / 1;
+  border-radius:14px;
+  overflow:hidden;
+  background:#f1f5f9;
+  box-shadow:0 2px 8px rgba(15,23,42,.05);
+  transition:transform .15s ease, box-shadow .2s ease;
+}
+#partner-offers .ig-tile:hover{
+  transform:translateY(-2px);
+  box-shadow:0 8px 24px rgba(15,23,42,.08);
+}
+#partner-offers .ig-tile > img{
+  width:100%; height:100%; object-fit:cover; display:block;
+}
+
+/* Hover-buttons onderin de tile */
+#partner-offers .ig-actions{
+  position:absolute; left:8px; right:8px; bottom:8px;
+  display:flex; gap:8px; justify-content:space-between;
+  opacity:0; transform:translateY(6px);
+  transition:opacity .14s ease, transform .14s ease;
+}
+#partner-offers .ig-tile:hover .ig-actions{ opacity:1; transform:translateY(0); }
+
+/* Titelgradient onderin, badges bovenin */
+#partner-offers .ig-cap{
+  position:absolute; left:0; right:0; bottom:0; padding:10px 12px;
+  background:linear-gradient(180deg, transparent, rgba(0,0,0,.45));
+  color:#fff;
+}
+#partner-offers .ig-title{ font-weight:800; font-size:13px; line-height:1.25; }
+#partner-offers .ig-badge{
+  position:absolute; left:8px; top:8px; padding:4px 8px; border-radius:999px;
+  background:rgba(255,255,255,.92); color:#0f172a; font-weight:700; font-size:12px;
+  box-shadow:0 1px 2px rgba(0,0,0,.12);
+}
+#partner-offers .ig-status{
+  position:absolute; right:8px; top:8px; padding:4px 8px; border-radius:999px;
+  font-weight:800; font-size:12px; color:#fff; background:#6b7280;
+}
+#partner-offers .ig-status.ok{ background:#16a34a }
+#partner-offers .ig-status.blue{ background:#2563eb }
+#partner-offers .ig-status.gray{ background:#6b7280 }
+
+/* Noodrem: als toch de 'kaarten' markup verschijnt, maak ze compacter */
+#partner-offers .offer-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(280px,1fr));
+  gap:16px;
+}
+#partner-offers .offer-card .offer-media{
+  height:160px; /* compacter */
+}
+#partner-offers .offer-card .offer-media img{
+  width:100%; height:100%; object-fit:cover;
+}
