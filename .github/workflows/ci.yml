@@ -26,12 +26,17 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # Stable install: voorkomt Rollup native binary issues op Actions
+      # Schone install (stabiel op Actions)
       - name: Clean & install deps (stable for Rollup)
         run: |
           npm cache clean --force || true
           rm -rf node_modules package-lock.json
           npm i --no-audit --no-fund
+
+      # ✅ Forceer de Linux rollup-binary zodat Vite/rollup niet crasht
+      - name: Install rollup linux binary
+        run: |
+          npm i -D @rollup/rollup-linux-x64-gnu
 
       - name: Build
         env:
