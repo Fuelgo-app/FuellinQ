@@ -1,0 +1,666 @@
+/* =========================
+   THEMA VARIABLEN
+   ========================= */
+:root {
+  /* algemene kleuren */
+  --bg: #f8fafc;
+  --text: #0f172a;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+
+  /* merkaccenten (blauw/oranje) */
+  --accent: #0b3654;     /* primair  */
+  --accent-2: #f58220;   /* secundair */
+
+  /* primaire knopkleur (matcht “Route”) */
+  --brand-blue: #2f68ff;
+  --brand-blue-600: #2b5cf5;
+  --brand-blue-700: #2251ff;
+
+  /* UI-onderdelen */
+  --card-bg: #ffffff;
+  --card-text: #0f172a;
+
+  --btn-bg: var(--accent);
+  --btn-text: #ffffff;
+
+  --sidebar-bg: #ffffff;
+  --sidebar-text: #0f172a;
+
+  /* surfaces & schaduwen */
+  --surface-0: #f6f7fb;
+  --surface-1: #ffffff;
+  --surface-2: #eef2f7;
+  --shadow-sm: 0 2px 8px  rgba(15,23,42,.05);
+  --shadow-md: 0 8px 24px rgba(15,23,42,.08);
+
+  --btn-radius: 12px;
+}
+
+/* =========================
+   BASIS / RESET
+   ========================= */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* =========================
+   LAYOUT & UTILITIES
+   ========================= */
+.container { max-width: 1120px; margin: 0 auto; padding: 16px; }
+.card { background: #fff; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+.p-4 { padding: 16px; }
+.mt-3 { margin-top: 12px; }
+.mt-4 { margin-top: 16px; }
+.mb-3 { margin-bottom: 12px; }
+.mb-4 { margin-bottom: 16px; }
+
+.grid { display: grid; }
+.grid-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+.grid-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.grid-4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+
+.row { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; align-items: center; }
+
+.badge { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 12px; font-size: 12px; border: 1px solid var(--border); background: #f1f5f9; }
+.muted { color: var(--muted); font-size: 12px; }
+
+.list-row {
+  display: grid;
+  grid-template-columns: 4fr 3fr 2fr 1fr 1fr;
+  gap: 12px; align-items: center;
+  padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: #fff;
+}
+
+/* =========================
+   SIDEBAR
+   ========================= */
+.sidebar { background: var(--sidebar-bg); color: var(--sidebar-text); }
+
+/* =========================
+   KNOPPEN (uniform – global)
+   ========================= */
+.btn {
+  display:inline-flex; align-items:center; justify-content:center;
+  gap:8px; padding:10px 16px;
+  border-radius: var(--btn-radius);
+  border:1px solid var(--border);
+  background:#fff; color:#111827;
+  cursor:pointer; font-size:14px; font-weight:700;
+  text-decoration:none;
+  transition: background .15s ease, color .15s ease, border-color .15s ease, box-shadow .2s ease, transform .15s ease;
+}
+.btn:hover { background:#f8fafc; }
+
+.btn-outline {
+  background:#fff;
+  color:#111827;
+  border:1px solid var(--border);
+}
+
+.btn-primary,
+button[aria-pressed="true"],
+[role="tab"][aria-selected="true"] {
+  background: var(--brand-blue);
+  color:#fff !important;
+  border:1px solid var(--brand-blue-600);
+  box-shadow: 0 8px 22px rgba(47,104,255,.25);
+}
+.btn-primary:hover,
+button[aria-pressed="true"]:hover,
+[role="tab"][aria-selected="true"]:hover {
+  background: var(--brand-blue-700);
+  border-color: var(--brand-blue-700);
+  transform: translateY(-1px);
+}
+
+.btn:focus-visible,
+[role="tab"]:focus-visible {
+  outline:0;
+  box-shadow: 0 0 0 3px rgba(47,104,255,.25);
+}
+
+/* =========================
+   INPUTS
+   ========================= */
+.input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; width: 100%; }
+.input:focus { border-color: var(--brand-blue-600); box-shadow: 0 0 0 3px rgba(47,104,255,.12); }
+
+/* =========================
+   TABBAR
+   ========================= */
+.tabbar { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; background: #e5e7eb; padding: 6px; border-radius: 16px; }
+.tab { padding: 8px 12px; border-radius: 12px; font-size: 14px; border: 1px solid transparent; background: transparent; cursor: pointer; }
+.tab.active { background: #fff; border-color: var(--border); }
+
+/* =========================
+   DASHBOARD Tegels + Tekst
+   ========================= */
+.cards-grid { display: grid; gap: 16px; align-items: stretch; }
+@media (min-width: 640px) { .cards-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (min-width: 1024px) { .cards-grid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+
+.dashboard-card {
+  background-color: var(--card-bg);
+  color: var(--card-text);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.dashboard-card:hover { transform: translateY(-3px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+.dashboard-card h3 { color: var(--card-text); font-weight: 600; margin-bottom: 10px; }
+.dashboard-card .card-number { color: var(--accent-2); font-size: 2rem; font-weight: 800; }
+.dashboard-card .card-sub { margin-top: 6px; opacity: 0.85; font-size: 0.9rem; }
+
+/* kaarten: tekst altijd leesbaar (geen “wit op wit”) */
+.card, .dashboard-card { color: var(--text) !important; }
+.card *, .dashboard-card * { color: currentColor !important; }
+.card .muted, .dashboard-card .muted,
+.card small, .dashboard-card small { color: var(--muted) !important; }
+.card a, .dashboard-card a { color: var(--accent) !important; }
+.card a:hover, .dashboard-card a:hover { text-decoration: underline; }
+
+/* =========================
+   LINKS / FOOTER
+   ========================= */
+a { color: var(--accent); }
+a:hover { text-decoration: underline; }
+
+.site-footer { padding: 24px 0; border-top: 1px solid rgba(0,0,0,.06); margin-top: 32px; }
+.footer-nav { display: flex; flex-wrap: wrap; gap: 20px; }
+.footer-nav a { color: var(--muted); text-decoration: underline; }
+.footer-nav a:hover { color: var(--accent); }
+
+/* =========================
+   Paneel-look (optioneel)
+   ========================= */
+:root { --panel-bg: #f2f6fa; --panel-border: #e6edf5; }
+.dashboard-card, .card.card--panel {
+  background: var(--panel-bg) !important;
+  border: 1px solid var(--panel-border) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+.card .input, .card select, .card textarea {
+  background: #fff; border: 1px solid var(--panel-border); border-radius: 12px;
+}
+.card--white { background: #fff !important; border-color: var(--border) !important; box-shadow: 0 1px 2px rgba(0,0,0,.03) !important; }
+
+/* =========================
+   OfferCard compat
+   ========================= */
+.nav-link { display: inline-flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; text-decoration: none; color: #1f2937; border: 1px solid transparent; }
+.nav-link:hover { background: #fff; border-color: var(--border); }
+.nav-link.active { background: var(--brand-blue); color:#fff; border-color: var(--brand-blue); box-shadow: 0 2px 8px rgba(15,23,42,.05); font-weight: 700; }
+
+/* Mini utilities */
+.rounded-2xl { border-radius: 16px; }
+.overflow-hidden { overflow: hidden; }
+.relative { position: relative; }
+.absolute { position: absolute; }
+.left-3 { left: 12px; } .right-3 { right: 12px; } .top-3 { top: 12px; }
+.w-full { width: 100%; } .h-full { height: 100%; }
+.object-cover { object-fit: cover; }
+.text-xs { font-size: 12px; } .text-sm { font-size: 14px; } .text-base { font-size: 16px; }
+.font-semibold { font-weight: 600; } .leading-snug { line-height: 1.25; }
+.inline-flex { display: inline-flex; } .flex { display: flex; }
+.items-center { align-items: center; } .items-start { align-items: flex-start; }
+.justify-between { justify-content: space-between; } .flex-wrap { flex-wrap: wrap; }
+.gap-1 { gap: 4px; } .gap-2 { gap: 8px; } .gap-3 { gap: 12px; }
+.border { border: 1px solid var(--panel-border, var(--border)); }
+.shadow-sm { box-shadow: var(--shadow-sm, 0 2px 8px rgba(15,23,42,.05)); }
+.hover\:shadow-md:hover { box-shadow: 0 8px 24px rgba(15,23,42,.08); }
+.transition-shadow { transition: box-shadow .2s ease, transform .2s ease; }
+
+/* =========================
+   Partner Offers
+   ========================= */
+.offer-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); align-items: stretch; }
+.offer-card { height: 100%; display: flex; flex-direction: column; background: #fff; }
+.offer-card .media { aspect-ratio: 4 / 3; background: #f1f5f9; position: relative; }
+.offer-card .body { flex: 1; display: grid; gap: 8px; padding: 16px; }
+.icon svg { width:24px !important; height:24px !important; }
+
+/* =========================
+   Badges (actief / silver)
+   ========================= */
+.badge.active, .pill.active, .tag.active,
+.badge.is-active, .pill.is-active, .tag.is-active,
+.badge[data-state="active"], .pill[data-state="active"], .tag[data-state="active"] {
+  background: var(--brand-blue) !important;
+  color: #fff !important;
+  border: 0 !important;
+}
+.badge.silver, .pill.silver, .tag.silver,
+.badge[data-tier="silver"], .pill[data-tier="silver"], .tag[data-tier="silver"] {
+  background: linear-gradient(180deg, #f3f6fb, #e6ebf3) !important;
+  color: #0b3654 !important;
+  border: 1px solid #d7deea !important;
+  box-shadow: inset 0 1px 0 #ffffff80 !important;
+  border-radius: 999px !important;
+  padding: 2px 10px !important;
+  font-weight: 700 !important;
+}
+
+/* =========================
+   Rewards / Inwisselen – blauw & wit (consistent)
+   ========================= */
+.rewards .btn,
+#rewards .btn,
+.rewards-card .btn,
+.rewards-list .btn,
+.redeem-list .btn,
+.exchange-list .btn,
+.inwisselen-list .btn,
+.rewards button,
+#rewards button,
+.rewards-card button,
+.rewards-list button,
+.redeem-list button,
+.exchange-list button,
+.inwisselen-list button {
+  background: var(--brand-blue) !important;
+  color: #fff !important;
+  border-color: var(--brand-blue) !important;
+  box-shadow: 0 8px 22px rgba(47,104,255,.25) !important;
+  border-radius: var(--btn-radius) !important;
+  font-weight: 700 !important;
+}
+.rewards .btn:hover,
+#rewards .btn:hover,
+.rewards-card .btn:hover,
+.rewards-list .btn:hover,
+.redeem-list .btn:hover,
+.exchange-list .btn:hover,
+.inwisselen-list .btn:hover,
+.rewards button:hover,
+#rewards button:hover,
+.rewards-card button:hover,
+.rewards-list button:hover,
+.redeem-list button:hover,
+.exchange-list button:hover,
+.inwisselen-list button:hover {
+  background: var(--brand-blue-700) !important;
+  border-color: var(--brand-blue-700) !important;
+  transform: translateY(-1px);
+}
+.rewards .btn:focus-visible,
+#rewards .btn:focus-visible,
+.rewards-card .btn:focus-visible,
+.rewards-list .btn:focus-visible,
+.redeem-list .btn:focus-visible,
+.exchange-list .btn:focus-visible,
+.inwisselen-list .btn:focus-visible,
+.rewards button:focus-visible,
+#rewards button:focus-visible,
+.rewards-card button:focus-visible,
+.rewards-list button:focus-visible,
+.redeem-list button:focus-visible,
+.exchange-list button:focus-visible,
+.inwisselen-list button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(47,104,255,.25) !important;
+}
+
+/* ======================================================
+   EU Agenda (geïsoleerd via #eu-agenda)
+   ====================================================== */
+#eu-agenda #features { background:#ECF3FB; position: relative; }
+#eu-agenda #features .wrap { max-width:72rem; margin:0 auto; padding:3.5rem 1.5rem; }
+#eu-agenda #features h2{
+  font-weight:700; letter-spacing:-0.01em; color:#0B3654; text-align:center;
+  font-size:clamp(26px, 2.2vw, 32px);
+}
+#eu-agenda #features .grid {
+  display:grid !important;
+  grid-template-columns: repeat(4,minmax(0,1fr)) !important;
+  gap:48px !important;
+  text-align:center;
+  padding-top:1rem;
+  padding-bottom:.5rem;
+}
+@media (max-width:1024px){
+  #eu-agenda #features .grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+}
+@media (max-width:640px){
+  #eu-agenda #features .grid { grid-template-columns:1fr !important; }
+}
+
+/* Grote iconen */
+#eu-agenda #features .feature-icon svg{
+  width:80px !important; height:80px !important; stroke-width:2.4 !important; color:#0EA5E9 !important;
+}
+@media (max-width:1024px){
+  #eu-agenda #features .feature-icon svg{ width:72px !important; height:72px !important; }
+}
+@media (max-width:640px){
+  #eu-agenda #features .feature-icon svg{ width:64px !important; height:64px !important; }
+}
+:where(#eu-agenda) #features .feature-icon svg { width:inherit !important; height:inherit !important; }
+
+#eu-agenda #features .ft-title{ margin-top:12px; font-weight:600; color:#123A5C; font-size:18px; }
+#eu-agenda #features .ft-text{
+  margin-top:8px; color:#274F73; font-size:14px; line-height:1.6;
+  max-width:240px; margin-left:auto; margin-right:auto;
+}
+
+/* Fade-in */
+#eu-agenda #features .grid > div{ opacity:0; transform:translateY(20px); animation: euFadeUp .8s ease forwards; }
+#eu-agenda #features .grid > div:nth-child(2){ animation-delay:.1s; }
+#eu-agenda #features .grid > div:nth-child(3){ animation-delay:.2s; }
+#eu-agenda #features .grid > div:nth-child(4){ animation-delay:.3s; }
+
+/* Neutraliseer thema binnen scope */
+#eu-agenda .card, #eu-agenda .collapse, #eu-agenda .panel, #eu-agenda .box, #eu-agenda .divider {
+  background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important;
+}
+#eu-agenda section { border: 0 !important; background: transparent !important; }
+#eu-agenda .grid { display: grid !important; }
+#eu-agenda .gap-6 { gap: 1.5rem !important; }
+#eu-agenda .gap-8 { gap: 2rem !important; }
+#eu-agenda .rounded-2xl { border-radius: 1rem !important; }
+#eu-agenda .soft-border { border: 1px solid rgb(226 232 240) !important; }
+#eu-agenda .shadow-soft { box-shadow: 0 1px 2px rgba(0,0,0,.05) !important; }
+#eu-agenda .shadow-soft-hover:hover { box-shadow: 0 8px 24px rgba(15,23,42,.08) !important; }
+#eu-agenda .soft-card {
+  background: #fff !important; border: 1px solid rgb(226 232 240) !important; border-radius: 1rem !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,.05) !important; transition: box-shadow .25s ease, transform .25s ease !important;
+}
+#eu-agenda .soft-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(15,23,42,.08) !important; }
+#eu-agenda svg { width: 24px !important; height: 24px !important; display: inline-block !important; }
+#eu-agenda .hero a { text-decoration: none !important; }
+#eu-agenda .hero-copy, #eu-agenda .hero-copy * { color: #fff !important; }
+
+/* Hero knoppen binnen scope */
+#eu-agenda .btn-white,
+#eu-agenda .btn-ghost{
+  display:inline-flex; align-items:center; gap:10px;
+  padding:12px 18px; border-radius:14px; font-weight:700; letter-spacing:.01em; line-height:1;
+  text-decoration:none !important;
+  transition:transform .15s ease, box-shadow .2s ease, background .2s ease, border-color .2s ease, color .2s ease;
+  box-shadow:0 8px 24px rgba(15,23,42,.18); will-change:transform, box-shadow;
+}
+#eu-agenda .btn-white{
+  background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(244,247,252,.98));
+  color:#0b3654 !important; border:1px solid rgba(255,255,255,.7);
+}
+#eu-agenda .btn-white:hover{ transform: translateY(-1px); box-shadow:0 14px 36px rgba(15,23,42,.28); background: linear-gradient(180deg, #fff, #f2f6fb); }
+#eu-agenda .btn-ghost{
+  background: rgba(255,255,255,.08); color:#fff !important; border:1px solid rgba(255,255,255,.45);
+  backdrop-filter: blur(6px) saturate(1.05);
+}
+#eu-agenda .btn-ghost:hover{ transform: translateY(-1px); box-shadow:0 14px 36px rgba(15,23,42,.28); background: rgba(255,255,255,.14); }
+
+/* Ghost variant voor lichte vlakken */
+#eu-agenda .btn-ghost--dark{
+  background:#fff; color:#0b3654 !important; border:1px solid #e2e8f0; box-shadow:0 6px 18px rgba(15,23,42,.08);
+}
+#eu-agenda .btn-ghost--dark:hover{ transform: translateY(-1px); box-shadow:0 12px 28px rgba(15,23,42,.14); background:#f9fbff; }
+
+/* CO2 card */
+#eu-agenda .co2-card{
+  background:#fff; border:1px solid #e2e8f0; border-radius:16px; box-shadow: var(--shadow-sm, 0 2px 8px rgba(15,23,42,.05));
+  padding:20px; opacity: 0; transform: translateY(20px); animation: euFadeUp .8s ease forwards .05s;
+}
+#eu-agenda .co2-card .co2-head{ display:flex; align-items:center; justify-content:space-between; }
+#eu-agenda .co2-card .co2-head h4{ margin:0; font-weight:600; }
+#eu-agenda .co2-card .badge-ghost{ font-size:12px; color:#475569; border:1px solid #e2e8f0; padding:4px 8px; border-radius:999px; background:#f8fafc; }
+#eu-agenda .co2-card .co2-top{ display:grid; grid-template-columns: 1fr 1fr; gap:18px; margin-top:16px; }
+#eu-agenda .co2-card .donut-wrap{ display:grid; place-items:center; opacity:0; transform:translateY(16px); animation: euFadeUp .7s ease forwards .15s; }
+#eu-agenda .co2-card .kpis{ display:grid; gap:12px; }
+#eu-agenda .co2-card .kpi{ background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; opacity:0; transform:translateY(16px); animation: euFadeUp .6s ease forwards; }
+#eu-agenda .co2-card .kpi:nth-child(1){ animation-delay:.22s; }
+#eu-agenda .co2-card .kpi:nth-child(2){ animation-delay:.30s; }
+#eu-agenda .co2-card .co2-bottom .kpi:nth-child(1){ animation-delay:.38s; }
+#eu-agenda .co2-card .co2-bottom .kpi:nth-child(2){ animation-delay:.46s; }
+#eu-agenda .co2-card .kpi-label{ font-size:12px; color:#64748b; }
+#eu-agenda .co2-card .kpi-value{ margin-top:4px; font-weight:700; font-size:18px; color:#0f172a; }
+#eu-agenda .co2-card .kpi-value .unit{ font-size:12px; color:#94a3b8; margin-left:2px; vertical-align:top; }
+#eu-agenda .co2-card .co2-bottom{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:16px; }
+
+/* Donut-fix */
+#eu-agenda .co2-card .donut-wrap svg { width: 140px !important; height: 140px !important; }
+#eu-agenda .co2-card .donut-wrap svg circle:nth-of-type(2) { transition: stroke-dashoffset .6s ease; }
+
+/* Roadmap */
+#eu-agenda .roadmap{ background:#fff; padding-bottom: clamp(28px, 6vw, 80px); }
+#eu-agenda .timeline{ position:relative; margin-top: 40px; }
+#eu-agenda .timeline .timeline-line{ position:absolute; left:0; right:0; top:22px; height:2px; background:#cbd5e1; }
+#eu-agenda .milestones{ display:grid; gap:28px; position:relative; grid-template-columns: repeat(4,minmax(0,1fr)); padding-bottom: clamp(8px, 2vw, 16px); }
+@media (max-width: 1024px){ #eu-agenda .milestones{ grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 640px){ #eu-agenda .milestones{ grid-template-columns: 1fr; } }
+#eu-agenda .ms{ text-align:center; opacity:0; transform:translateY(18px); animation: euFadeUp .7s ease forwards; }
+#eu-agenda .ms:nth-child(1){ animation-delay:.05s; }
+#eu-agenda .ms:nth-child(2){ animation-delay:.15s; }
+#eu-agenda .ms:nth-child(3){ animation-delay:.25s; }
+#eu-agenda .ms:nth-child(4){ animation-delay:.35s; }
+#eu-agenda .ms .dot{ position:relative; display:block; margin:0 auto 12px; width:14px; height:14px; border-radius:999px; background:#0ea5e9; box-shadow:0 0 0 4px #fff; }
+#eu-agenda .ms .year{ font-weight:700; font-size:22px; color:#0b3654; }
+#eu-agenda .ms .title{ margin-top:6px; color:#334155; }
+#eu-agenda .roadmap::after{
+  content:""; display:block; height:1px; width: min(1024px, 92%);
+  margin: clamp(16px, 2.5vw, 28px) auto 0;
+  background: linear-gradient(90deg, rgba(4,68,120,.14), rgba(4,68,120,.06), rgba(4,68,120,.14));
+  border-radius:999px; filter: blur(.2px);
+}
+
+/* Animaties */
+@keyframes euFadeUp { to { opacity: 1; transform: translateY(0); } }
+/* =========================
+   FORCEER MERKBLAUW VOOR PRIMAIRE KNOPPEN (TAILWIND/UI-KIT OVERRIDES)
+   ========================= */
+
+/* Zorg dat variabelen er zijn */
+:root{
+  --brand-blue: #2f68ff;
+  --brand-blue-600: #2b5cf5;
+  --brand-blue-700: #2251ff;
+}
+
+/* 1) Alle “gevulde” blauwe knoppen → merkblauw + witte tekst */
+.btn-primary,
+.button-primary,
+.primary,
+a.button-primary,
+button.button-primary,
+button.btn-primary,
+a.btn-primary,
+/* Tailwind utilities die vaak in JSX staan */
+.bg-blue-500, .bg-blue-600, .bg-blue-700, .bg-blue-800,
+.bg-indigo-500, .bg-indigo-600, .bg-indigo-700,
+button[class*="bg-blue-"], a[class*="bg-blue-"],
+/* Vaak gebruikte CTA's zonder semantische class */
+a[role="button"].cta, button.cta,
+a.cta, .cta-btn {
+  background-color: var(--brand-blue) !important;
+  border-color: var(--brand-blue) !important;
+  color: #fff !important;
+  box-shadow: 0 8px 22px rgba(47,104,255,.25) !important;
+  border-radius: var(--btn-radius, 12px) !important;
+  font-weight: 700 !important;
+}
+
+/* 2) Hover-states van blauwe knoppen */
+.hover\:bg-blue-500:hover, .hover\:bg-blue-600:hover, .hover\:bg-blue-700:hover,
+.hover\:bg-indigo-500:hover, .hover\:bg-indigo-600:hover, .hover\:bg-indigo-700:hover,
+button[class*="hover\\:bg-blue"]:hover,
+a[class*="hover\\:bg-blue"]:hover,
+.btn-primary:hover, .button-primary:hover, .primary:hover,
+a.button-primary:hover, button.button-primary:hover,
+a.cta:hover, button.cta:hover, .cta-btn:hover {
+  background-color: var(--brand-blue-700) !important;
+  border-color: var(--brand-blue-700) !important;
+  transform: translateY(-1px);
+}
+
+/* 3) Focus-ring consistent */
+.btn-primary:focus-visible,
+.button-primary:focus-visible,
+.primary:focus-visible,
+a.button-primary:focus-visible,
+button.button-primary:focus-visible,
+a.cta:focus-visible, button.cta:focus-visible, .cta-btn:focus-visible,
+.bg-blue-500:focus-visible, .bg-blue-600:focus-visible, .bg-blue-700:focus-visible {
+  outline: 0 !important;
+  box-shadow: 0 0 0 3px rgba(47,104,255,.25) !important;
+}
+
+/* 4) “Zoeken” & “Nu tanken” als ze geen semantische class hebben maar wél blauw utility */
+button:where([class*="bg-blue-"]), a:where([class*="bg-blue-"]) {
+  color: #fff !important;
+}
+
+/* 5) Outline/chips blijven wit met donkere tekst (zoals “Route”) */
+.btn-outline,
+a.btn-outline,
+button.btn-outline,
+/* vaak chips/filters met ring in blauwtint */
+.ring-blue-500, .ring-blue-600, .ring-blue-700,
+button[class*="ring-blue"], a[class*="ring-blue"] {
+  background: #fff !important;
+  color: #111827 !important;
+  border-color: var(--border) !important;
+}
+
+/* 6) Rewards/Inwisselen knoppen (veel voorkomende containers) */
+.rewards .btn, #rewards .btn,
+.rewards-list .btn, .redeem-list .btn,
+.exchange-list .btn, .inwisselen-list .btn,
+.rewards button, #rewards button,
+.redeem-list button, .exchange-list button, .inwisselen-list button {
+  background-color: var(--brand-blue) !important;
+  border-color: var(--brand-blue) !important;
+  color: #fff !important;
+  box-shadow: 0 8px 22px rgba(47,104,255,.25) !important;
+}
+.rewards .btn:hover, #rewards .btn:hover,
+.rewards-list .btn:hover, .redeem-list .btn:hover,
+.exchange-list .btn:hover, .inwisselen-list .btn:hover,
+.rewards button:hover, #rewards button:hover,
+.redeem-list button:hover, .exchange-list button:hover, .inwisselen-list button:hover {
+  background-color: var(--brand-blue-700) !important;
+  border-color: var(--brand-blue-700) !important;
+}
+
+/* 7) UI-kit varianten die soms binnensijpelen */
+.badge.active, .pill.active, .tag.active,
+.badge.is-active, .pill.is-active, .tag.is-active {
+  background: var(--brand-blue) !important;
+  color: #fff !important;
+  border: 0 !important;
+}
+/* Witte “ghost” knop met donkere tekst */
+.btn--ghost {
+  background:#fff;
+  border:1px solid var(--border);
+  box-shadow:0 8px 24px rgba(2,6,23,.06);
+  border-radius:9999px;
+}
+
+/* forceer donkere tekst, ook op <a> en nested spans */
+.btn--ghost,
+.btn--ghost:link,
+.btn--ghost:visited,
+.btn--ghost * {
+  color: var(--text) !important;
+  -webkit-text-fill-color: var(--text) !important; /* Safari */
+}
+
+.btn--ghost:hover {
+  background: var(--bg);
+  border-color: var(--accent);
+  color: var(--accent) !important;
+  -webkit-text-fill-color: var(--accent) !important;
+}
+/* =========================
+   Partner Offers – Instagram gallery (scoped)
+   ========================= */
+#partner-offers .ig-grid{
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap:14px;
+}
+@media (min-width:768px){
+  #partner-offers .ig-grid{
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap:16px;
+  }
+}
+
+#partner-offers .ig-tile{
+  position:relative;
+  aspect-ratio:1/1;                 /* echte vierkanten */
+  background:#f1f5f9;
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:hidden;
+  box-shadow:0 2px 8px rgba(15,23,42,.05);
+  transition:transform .15s ease, box-shadow .2s ease;
+}
+#partner-offers .ig-tile:hover{
+  transform:translateY(-2px);
+  box-shadow:0 8px 24px rgba(15,23,42,.08);
+}
+#partner-offers .ig-tile>img{
+  width:100%; height:100%; object-fit:cover; display:block;
+}
+
+#partner-offers .ig-cap{
+  position:absolute; left:0; right:0; bottom:0; padding:10px 12px;
+  background:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.45) 100%);
+  color:#fff;
+}
+#partner-offers .ig-title{ font-weight:800; font-size:13px; line-height:1.25; }
+
+#partner-offers .ig-badge{
+  position:absolute; left:8px; top:8px;
+  padding:4px 8px; border-radius:999px;
+  background:rgba(255,255,255,.92); color:#0f172a;
+  font-weight:700; font-size:12px;
+  box-shadow:0 1px 2px rgba(0,0,0,.12);
+}
+#partner-offers .ig-status{
+  position:absolute; right:8px; top:8px;
+  padding:4px 8px; border-radius:999px; font-weight:800; font-size:12px;
+  color:#fff; background:#6b7280;
+}
+#partner-offers .ig-status.ok{ background:#16a34a; }
+#partner-offers .ig-status.blue{ background:#2563eb; }
+#partner-offers .ig-status.gray{ background:#6b7280; }
+
+#partner-offers .ig-actions{
+  position:absolute; left:8px; right:8px; bottom:8px;
+  display:flex; gap:8px; justify-content:space-between;
+  opacity:0; transform:translateY(6px);
+  transition:opacity .14s ease, transform .14s ease;
+}
+#partner-offers .ig-tile:hover .ig-actions{ opacity:1; transform:translateY(0); }
+/* ====== VISIBILITY RESCUE (debug) ====== */
+#root { min-height: 100vh; outline: 0; }
+body, #root, #root * {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+[hidden], .hidden { display: none !important; }
+
+/* tijdelijk: forceer donkere tekst zodat wit-op-wit niet kan gebeuren */
+#root, #root * { color: #111827 !important; }
+
+/* optioneel: laat even zien dát er DOM is */
+#root { outline: 2px dashed rgba(11,54,84,.25); }
+/* ===== Visibility rescue – tijdelijk voor debug ===== */
+#root { min-height: 100vh; }
+body, #root, #root * {
+  opacity: 1 !important;
+  visibility: visible !important;
+  color: #111827 !important; /* tekst zeker zichtbaar */
+}
+[hidden], .hidden { display: none !important; }
