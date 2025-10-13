@@ -12,10 +12,12 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
-    "pg": "^8.11.5",
+    "nodemailer": "^7.0.9",
+    "pg": "^8.16.3",
     "stripe": "^18.5.0"
   },
   "devDependencies": {
