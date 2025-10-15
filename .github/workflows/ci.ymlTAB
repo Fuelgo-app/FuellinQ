@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ develop ]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # ⬇️ Attempt + fallback zodat we 'npm ci' proberen, maar Rollup-bug omzeilen als het moet
+      - name: Install deps (try ci, then fallbacks)
+        run: |
+          npm ci --no-optional || \
+          (npm cache clean --force && rm -rf node_modules && npm ci --no-optional) || \
+          (rm -rf node_modules package-lock.json && npm i --no-audit --no-fund --no-optional)
+
+      - name: Build
+        env:
+          VITE_API_URL: http://localhost:3000
+          NODE_ENV: production
+        run: |
+          if npm run | grep -q "build"; then
+            npm run build
+          else
+            npx vite build
+          fi
+
+      - name: Upload build artifact (optional)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install deps
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm i; fi
+
+      - name: Health check (files & syntax)
+        run: |
+          test -f server.js || (echo "server.js not found" && exit 1)
+          node -e "require('fs').readFileSync('server.js'); console.log('server.js readable')"

@@ -33,7 +33,7 @@ try { routesIndex = require("./routes"); } catch { routesIndex = null; }
 
 // ───────────────── App & config ─────────────────
 const app = express();
-const PORT = Number(process.env.PORT || 3001);
+const PORT = Number(process.env.PORT || 3000);
 const WEB_BASE_URL = (process.env.WEB_BASE_URL || "http://localhost:5173").replace(/\/+$/, "");
 
 // ───────────────── Crash-safety ─────────────────
@@ -1312,7 +1312,7 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: "server_error" });
 });
 
-// ───────────────── Start (robuust) ─────────────────
+// ───────────────── Start (eenvoudig) ─────────────────
 function printRoutes(p) {
   console.log(`✅ FuellinQ backend running on http://localhost:${p}`);
   console.log(`🌍 Frontend: ${WEB_BASE_URL}`);
@@ -1331,21 +1331,10 @@ function printRoutes(p) {
   }
 }
 
-function start(port = PORT) {
-  const server = app.listen(port, () => printRoutes(port));
-  server.on("error", (err) => {
-    if (err && err.code === "EADDRINUSE") {
-      const next = port + 1;
-      console.warn(`Port ${port} in use, retry op ${next}...`);
-      setTimeout(() => start(next), 250);
-    } else {
-      console.error("Server listen error:", err);
-      process.exit(1);
-    }
-  });
-}
-
-// Alleen luisteren als dit bestand direct wordt uitgevoerd
-if (require.main === module) { start(); }
+// Luister op alle interfaces (handig voor Docker/VM)
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ FuellinQ backend running on :${PORT}`);
+  printRoutes(PORT);
+});
 
 module.exports = app;
