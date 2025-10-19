@@ -1,21 +1,18 @@
-# ---- FuellinQ backend build/run (monorepo: backend/ + frontend/) ----
+# Dockerfile (root van de repo)
 FROM node:20-alpine
 
-# 1) eerst alleen backend package files (snellere cache)
+# alleen backend deps cachen
 WORKDIR /app/backend
 COPY backend/package*.json ./
-
-# 2) prod dependencies voor backend
 RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
 
-# 3) kopieer de rest van de repo (frontend mag mee, is ok)
+# rest van de repo kopiëren (frontend mag mee)
 WORKDIR /app
 COPY . .
 
-# 4) runtime env
 ENV NODE_ENV=production
 ENV PORT=3000
 EXPOSE 3000
 
-# 5) start jouw backend/server.js
+# ⬅️ start het juiste pad
 CMD ["node", "backend/server.js"]
