@@ -20,7 +20,8 @@ function guessApiBase() {
 export const API_BASE = (RAW_API && RAW_API !== "/" ? RAW_API : guessApiBase()).replace(/\/+$/, "");
 
 /* ─────────────────────────────────────────────────────────────
-   Token helpers  (alles exporteren voor hergebruik)
+   Token helpers
+   (server gebruikt primair HttpOnly cookie; token is optioneel)
 ───────────────────────────────────────────────────────────── */
 const TOKEN_KEY = "token";
 
@@ -46,8 +47,7 @@ export const authHeader = () => {
 /* ─────────────────────────────────────────────────────────────
    Utils
 ───────────────────────────────────────────────────────────── */
-const isFormData = (v) =>
-  typeof FormData !== "undefined" && v instanceof FormData;
+const isFormData = (v) => typeof FormData !== "undefined" && v instanceof FormData;
 
 export const buildQS = (obj = {}) => {
   const u = new URLSearchParams();
@@ -67,20 +67,38 @@ const parseResponse = async (res) => {
   try { return await res.text(); } catch { return ""; }
 };
 
+// Bepaal of we een Authorization header moeten meesturen
+function shouldAttachAuth(fullUrlOrPath) {
+  // niets meesturen naar /auth/* (login/register/whoami/logout)
+  const p = typeof fullUrlOrPath === "string" ? fullUrlOrPath : "";
+  const re = /(^|\/)(api\/)?auth(\/|$)/i; // match ook absolute/relative varianten
+  return !re.test(p);
+}
+
+// Zorg dat relative paths een leading slash hebben
+function normalizePath(path) {
+  if (!path) return "/";
+  if (/^https?:\/\//i.test(path)) return path;
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
 /* ─────────────────────────────────────────────────────────────
    apiFetch
    - Voegt API_BASE toe
    - Zet JSON headers/body automatisch (behalve bij FormData)
-   - Plakt Bearer token
+   - Plakt Bearer token (niet voor /auth/*)
    - 401 ⇒ token wissen + redirect naar /auth (indien nodig)
    - Heldere foutmelding bij netwerk/mixed-content/CORS issues
 ───────────────────────────────────────────────────────────── */
 export async function apiFetch(path, opts = {}) {
-  const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+  const norm = normalizePath(path);
+  const url = /^https?:\/\//i.test(norm) ? norm : `${API_BASE}${norm}`;
 
-  const headers = { ...(opts.headers || {}), ...authHeader() };
+  const headers = { ...(opts.headers || {}) };
+  if (shouldAttachAuth(norm)) Object.assign(headers, authHeader());
 
   let body = opts.body;
+  // Content-Type alleen bij non-FormData JSON
   if (body && !isFormData(body) && typeof body === "object") {
     headers["Content-Type"] = headers["Content-Type"] || "application/json";
     body = JSON.stringify(body);
@@ -91,16 +109,18 @@ export async function apiFetch(path, opts = {}) {
     res = await fetch(url, {
       method: opts.method || "GET",
       headers,
-      credentials: "include",
+      credentials: "include",   // ← cookies meesturen
       body,
       signal: opts.signal,
       cache: opts.cache,
       mode: opts.mode,
+      keepalive: opts.keepalive,
     });
   } catch (e) {
-    // Typische gevallen: mixed content (http vs https), DNS, CORS preflight
     const hint =
-      typeof window !== "undefined" && window.location.protocol === "https:" && url.startsWith("http://")
+      typeof window !== "undefined" &&
+      window.location.protocol === "https:" &&
+      url.startsWith("http://")
         ? "Browser blokkeert onveilige HTTP call vanaf HTTPS (mixed content)."
         : "Netwerk/CORS-preflight fout (geen response ontvangen).";
     const err = new Error(`network_error: ${hint}`);
@@ -142,8 +162,27 @@ export const apiPut  = (path, body, opts = {}) => apiFetch(path, { ...opts, meth
 export const apiDel  = (path, opts = {})       => apiFetch(path, { ...opts, method: "DELETE" });
 
 /* ─────────────────────────────────────────────────────────────
+   Auth helpers (cookie-first)
+   - Server zet HttpOnly cookie; token in body is optioneel (fallback)
+───────────────────────────────────────────────────────────── */
+export async function login(email, password) {
+  const res = await apiFetch("/api/auth/login", {
+    method: "POST",
+    body: { email, password },
+  });
+  if (res?.token) setToken(res.token);      // optioneel token bijhouden
+  return res?.user || null;
+}
+
+export async function register({ email, password, first_name = null, last_name = null }) {
+  return apiFetch("/api/auth/register", {
+    method: "POST",
+    body: { email, password, first_name, last_name },
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────
    Upload (multipart)
-   Voorbeeld: const { url } = await upload("/api/partner/upload", file, { folder: "offers" })
 ───────────────────────────────────────────────────────────── */
 export async function upload(endpoint, file, extraFields = {}) {
   const fd = new FormData();
@@ -170,4 +209,7 @@ export default {
   apiPut,
   apiDel,
   upload,
+  // ook beschikbaar via default:
+  login,
+  register,
 };
