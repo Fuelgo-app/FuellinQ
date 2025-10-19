@@ -69,11 +69,17 @@ const parseResponse = async (res) => {
 
 // Bepaal of we een Authorization header moeten meesturen
 function shouldAttachAuth(fullUrlOrPath) {
-  // niets meesturen naar /auth/* (login/register/whoami/logout)
   const p = typeof fullUrlOrPath === "string" ? fullUrlOrPath : "";
-  const re = /(^|\/)(api\/)?auth(\/|$)/i; // match ook absolute/relative varianten
-  return !re.test(p);
+
+  // Standaard: niets meesturen naar /auth/*
+  const isAuthPath = /(^|\/)(api\/)?auth(\/|$)/i.test(p);
+
+  // Uitzondering: voor whoami *wel* Authorization meesturen
+  if (/whoami/i.test(p)) return true;
+
+  return !isAuthPath;
 }
+
 
 // Zorg dat relative paths een leading slash hebben
 function normalizePath(path) {
