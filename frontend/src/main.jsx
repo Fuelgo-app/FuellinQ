@@ -1,4 +1,11 @@
+// --- build marker ---
+// als je dit niet in de console ziet, draai je niet de nieuwste build
+console.log("[BUILD] main.jsx loaded");
+
 // src/main.jsx
+// src/main.jsx
+import "@/api/base"; // zorgt dat base.js uitgevoerd wordt en window.API_BASE zet
+
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, useLocation } from "react-router-dom";
@@ -6,6 +13,9 @@ import App from "./App.jsx";
 import "./index.css";
 import "./ui.css";
 import { applyBrandFromStorage } from "./lib/brand";
+
+// ⬇️ Centrale API-config zichtbaar maken in window.*
+import { API_BASE } from "@/api/base";
 
 // ⬇️ Gebruik je aparte component (zorg dat het zo heet: src/components/ErrorBoundary.jsx)
 import ErrorBoundary from "@/components/ErrorBoundary.jsx";
@@ -15,6 +25,13 @@ try {
   applyBrandFromStorage?.();
 } catch (e) {
   console.warn("Brand load failed:", e);
+}
+
+/* ------------------ API_BASE debug zichtbaar in browser ------------------ */
+if (typeof window !== "undefined") {
+  // Handig om snel te checken waarheen requests gaan
+  window.API_BASE = API_BASE;
+  console.log("[API_BASE from main.jsx]", API_BASE);
 }
 
 /* ------------------ ScrollToTop helper ------------------ */

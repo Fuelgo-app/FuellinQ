@@ -2,11 +2,22 @@
 // Reusable API helpers voor de hele frontend
 
 /* ─────────────────────────────────────────────────────────────
-   API_BASE (Vite: VITE_API_URL), nette fallback naar localhost
+   API_BASE
+   - 1) VITE_API_URL als die gezet is
+   - 2) Slim raden: prod -> https://api.fuellinq.app, dev -> http://localhost:3000
 ───────────────────────────────────────────────────────────── */
 const RAW_API = (import.meta.env.VITE_API_URL ?? "").trim();
-export const API_BASE =
-  (RAW_API && RAW_API !== "/" ? RAW_API : "http://localhost:3000").replace(/\/+$/, "");
+
+function guessApiBase() {
+  if (typeof window === "undefined") return "http://localhost:3000";
+  const host = window.location.hostname.toLowerCase();
+  // elke *fuellinq.app omgeving gebruikt de publieke API
+  if (host.endsWith("fuellinq.app")) return "https://api.fuellinq.app";
+  // anders lokale dev
+  return "http://localhost:3000";
+}
+
+export const API_BASE = (RAW_API && RAW_API !== "/" ? RAW_API : guessApiBase()).replace(/\/+$/, "");
 
 /* ─────────────────────────────────────────────────────────────
    Token helpers  (alles exporteren voor hergebruik)
@@ -62,6 +73,7 @@ const parseResponse = async (res) => {
    - Zet JSON headers/body automatisch (behalve bij FormData)
    - Plakt Bearer token
    - 401 ⇒ token wissen + redirect naar /auth (indien nodig)
+   - Heldere foutmelding bij netwerk/mixed-content/CORS issues
 ───────────────────────────────────────────────────────────── */
 export async function apiFetch(path, opts = {}) {
   const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
@@ -74,15 +86,28 @@ export async function apiFetch(path, opts = {}) {
     body = JSON.stringify(body);
   }
 
-  const res = await fetch(url, {
-    method: opts.method || "GET",
-    headers,
-    credentials: "include",
-    body,
-    signal: opts.signal,
-    cache: opts.cache,
-    mode: opts.mode,
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      method: opts.method || "GET",
+      headers,
+      credentials: "include",
+      body,
+      signal: opts.signal,
+      cache: opts.cache,
+      mode: opts.mode,
+    });
+  } catch (e) {
+    // Typische gevallen: mixed content (http vs https), DNS, CORS preflight
+    const hint =
+      typeof window !== "undefined" && window.location.protocol === "https:" && url.startsWith("http://")
+        ? "Browser blokkeert onveilige HTTP call vanaf HTTPS (mixed content)."
+        : "Netwerk/CORS-preflight fout (geen response ontvangen).";
+    const err = new Error(`network_error: ${hint}`);
+    err.cause = e;
+    err.url = url;
+    throw err;
+  }
 
   const data = await parseResponse(res);
 
@@ -101,6 +126,7 @@ export async function apiFetch(path, opts = {}) {
     const err = new Error(message);
     err.status = res.status;
     err.data = data;
+    err.url = url;
     throw err;
   }
 
