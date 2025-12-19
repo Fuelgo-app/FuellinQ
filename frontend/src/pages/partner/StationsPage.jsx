@@ -1,162 +1,314 @@
 // src/pages/partner/StationsPage.jsx
-import React, { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { API_BASE } from "../../api/partner.js"; // correcte import met .js
 
-// Pas dit pad aan als jouw API helper elders staat:
-import { API_BASE } from "../../api/partner.js";
+/* ====== Kleine helpers (zonder afhankelijkheid van partner.js) ====== */
+const token = () => localStorage.getItem("token") || "";
 
-// Lokale kopie van authHeaders om geen afhankelijkheid te breken
-function authHeaders() {
-  const token = localStorage.getItem("token") || "";
+async function apiJson(path, opts = {}) {
+  const r = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token()}`,
+      ...(opts.headers || {}),
+    },
+    ...opts,
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data?.error || `${opts.method || "GET"} ${path} failed`);
+  return data;
+}
+
+/* Back-end mapping:
+   UI: {title, address, city, zip, country, latitude, longitude}
+   API verwacht: {street, house_number?, postcode, city, country, lat, lng}
+*/
+function uiFromApi(row) {
   return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
+    id: row.id,
+    title: row.title || "",
+    address:
+      row.address || // oude veldnaam fallback
+      [row.street, row.house_number].filter(Boolean).join(" ") || "",
+    city: row.city || "",
+    zip: row.zip || row.postcode || "",
+    country: row.country || "NL",
+    latitude: row.latitude ?? row.lat ?? "",
+    longitude: row.longitude ?? row.lng ?? "",
   };
 }
 
+function apiFromUi(ui) {
+  // simpele splits: “Ambachtsweg 12” → street="Ambachtsweg", house_number="12"
+  let street = ui.address?.trim() || "";
+  let house_number = null;
+  const m = street.match(/^(.*\S)\s+(\d+[A-Za-z\-]*)$/);
+  if (m) {
+    street = m[1];
+    house_number = m[2];
+  }
+  return {
+    title: (ui.title || "").trim(),
+    street: street || null,
+    house_number,
+    postcode: (ui.zip || "").trim() || null,
+    city: (ui.city || "").trim() || null,
+    country: (ui.country || "").trim() || "NL",
+    lat: ui.latitude === "" ? null : Number(ui.latitude),
+    lng: ui.longitude === "" ? null : Number(ui.longitude),
+  };
+}
+
+/* ====== Pagina ====== */
 export default function StationsPage() {
-  const navigate = useNavigate();
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [q, setQ] = useState("");
+  const [msg, setMsg] = useState("");
 
-  async function fetchStations() {
+  // formulier state voor nieuw station
+  const [form, setForm] = useState({
+    title: "",
+    address: "",
+    city: "",
+    zip: "",
+    country: "NL",
+    latitude: "",
+    longitude: "",
+  });
+  const set = (k, v) => setForm((s) => ({ ...s, [k]: v }));
+
+  async function load() {
     setLoading(true);
-    setErr("");
+    setMsg("");
     try {
-      const res = await fetch(`${API_BASE}/api/partner/stations`, {
-        headers: authHeaders(),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Kon stations niet laden.");
-      setStations(Array.isArray(data?.rows) ? data.rows : data);
+      // eigen stations (auth) — let op partner-prefix
+      const j = await apiJson(`/api/partner/stations`);
+      const list = Array.isArray(j?.stations) ? j.stations : (Array.isArray(j) ? j : []);
+      setStations(list.map(uiFromApi));
     } catch (e) {
-      setErr(e.message || "Onbekende fout bij laden.");
+      setMsg(e.message || "Kon stations niet laden");
     } finally {
       setLoading(false);
     }
   }
+  useEffect(() => { load(); }, []);
 
-  useEffect(() => {
-    fetchStations();
-  }, []);
-
-  const filtered = useMemo(() => {
-    if (!q.trim()) return stations;
-    const s = q.toLowerCase();
-    return stations.filter((st) => {
-      const hay =
-        `${st?.title ?? ""} ${st?.address_line1 ?? ""} ${st?.postal_code ?? ""} ${st?.city ?? ""}`.toLowerCase();
-      return hay.includes(s);
-    });
-  }, [q, stations]);
-
-  async function handleDelete(id) {
-    const station = stations.find((s) => s.id === id);
-    const name = station?.title ? `‘${station.title}’` : `#${id}`;
-    if (!window.confirm(`Weet je zeker dat je station ${name} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`)) {
-      return;
-    }
-    setErr("");
+  async function submit(e) {
+    e.preventDefault();
+    setMsg("");
     try {
-      const res = await fetch(`${API_BASE}/api/partner/stations/${id}`, {
-        method: "DELETE",
-        headers: authHeaders(),
+      const payload = apiFromUi(form);
+      if (!payload.title) return setMsg("Geef een naam/titel op.");
+      await apiJson(`/api/partner/stations`, {
+        method: "POST",
+        body: JSON.stringify(payload),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Verwijderen mislukt.");
-      // Optimistisch updaten
-      setStations((prev) => prev.filter((s) => s.id !== id));
+      setForm({
+        title: "",
+        address: "",
+        city: "",
+        zip: "",
+        country: "NL",
+        latitude: "",
+        longitude: "",
+      });
+      await load();
+      setMsg("Station opgeslagen ✅");
+    } catch (e2) {
+      setMsg(e2.message || "Opslaan mislukt");
+    }
+  }
+
+  async function saveInline(s) {
+    try {
+      const payload = apiFromUi(s);
+      await apiJson(`/api/partner/stations/${s.id}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      setMsg("Bijgewerkt ✅");
     } catch (e) {
-      setErr(e.message || "Onbekende fout bij verwijderen.");
+      setMsg(e.message || "Bijwerken mislukt");
+    }
+  }
+
+  async function removeStation(id) {
+    if (!confirm("Weet je zeker dat je dit station wil verwijderen?")) return;
+    try {
+      await apiJson(`/api/partner/stations/${id}`, { method: "DELETE" });
+      setStations((rows) => rows.filter((r) => r.id !== id));
+      setMsg("Verwijderd ✅");
+    } catch (e) {
+      setMsg(e.message || "Verwijderen mislukt");
     }
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <h1 className="text-2xl font-semibold">Tankstations</h1>
-        <div className="flex items-center gap-2">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Zoeken op naam, adres of plaats…"
-            className="border rounded-lg px-3 py-2 w-56 md:w-72 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <Link
-            to="/partner/stations/new"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700"
-          >
-            + Nieuw station
-          </Link>
-        </div>
+    <div className="container">
+      <h1 style={{ margin: 0 }}>Tankstations</h1>
+
+      {/* Nieuw station */}
+      <div className="card" style={{ padding: 16, marginTop: 16 }}>
+        <h3 style={{ marginTop: 0 }}>Nieuw station toevoegen</h3>
+        <form onSubmit={submit} style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <input
+              className="input"
+              placeholder="Titel/Naam *"
+              value={form.title}
+              onChange={(e) => set("title", e.target.value)}
+            />
+            <input
+              className="input"
+              placeholder="Adres (straat + nr)"
+              value={form.address}
+              onChange={(e) => set("address", e.target.value)}
+            />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <input
+              className="input"
+              placeholder="Plaats"
+              value={form.city}
+              onChange={(e) => set("city", e.target.value)}
+            />
+            <input
+              className="input"
+              placeholder="Postcode"
+              value={form.zip}
+              onChange={(e) => set("zip", e.target.value)}
+            />
+            <input
+              className="input"
+              placeholder="Land (bv. NL)"
+              value={form.country}
+              onChange={(e) => set("country", e.target.value)}
+            />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <input
+              className="input"
+              placeholder="Latitude"
+              value={form.latitude}
+              onChange={(e) => set("latitude", e.target.value)}
+            />
+            <input
+              className="input"
+              placeholder="Longitude"
+              value={form.longitude}
+              onChange={(e) => set("longitude", e.target.value)}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-primary" type="submit">Opslaan</button>
+            {msg && <div className="muted" style={{ alignSelf: "center" }}>{msg}</div>}
+          </div>
+        </form>
       </div>
 
-      {err && (
-        <div className="mb-4 rounded-xl border border-red-300 bg-red-50 text-red-800 px-4 py-3">
-          {err}
+      {/* Lijst */}
+      <div className="card" style={{ padding: 16, marginTop: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3 style={{ marginTop: 0 }}>Mijn stations</h3>
+          <button className="btn" onClick={load} disabled={loading}>Verversen</button>
         </div>
-      )}
 
-      {loading ? (
-        <div className="animate-pulse text-gray-500">Laden…</div>
-      ) : filtered.length === 0 ? (
-        <div className="rounded-xl border border-gray-200 p-6 text-gray-600">
-          Geen stations gevonden.{" "}
-          <button
-            onClick={fetchStations}
-            className="underline text-blue-600 hover:text-blue-800"
-          >
-            Opnieuw proberen
-          </button>
-          .
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Naam</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Adres</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Plaats</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Postcode</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600">Acties</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((st) => (
-                <tr key={st.id} className="border-t">
-                  <td className="px-4 py-3">
-                    <div className="font-semibold">{st.title || "-"}</div>
-                    <div className="text-xs text-gray-500">#{st.id}</div>
-                  </td>
-                  <td className="px-4 py-3">{st.address_line1 || "-"}</td>
-                  <td className="px-4 py-3">{st.city || "-"}</td>
-                  <td className="px-4 py-3">{st.postal_code || "-"}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
-                      {/* Eventueel later een Edit-pagina */}
-                      {/* <button
-                        onClick={() => navigate(`/partner/stations/${st.id}/edit`)}
-                        className="px-3 py-1.5 rounded-lg border hover:bg-gray-50"
-                      >
-                        Bewerken
-                      </button> */}
-                      <button
-                        onClick={() => handleDelete(st.id)}
-                        className="px-3 py-1.5 rounded-lg border border-red-300 text-red-700 hover:bg-red-50"
-                      >
-                        Verwijderen
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+        {loading ? (
+          <div className="p-4">Laden…</div>
+        ) : stations.length === 0 ? (
+          <div className="p-4 muted">Nog geen stations aangemaakt.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 12 }}>
+            {stations.map((s) => (
+              <div key={s.id} className="card" style={{ padding: 12 }}>
+                <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr", alignItems: "start" }}>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span className="muted">Titel</span>
+                    <input
+                      className="input"
+                      value={s.title}
+                      onChange={(e) =>
+                        setStations(prev => prev.map(x => x.id === s.id ? { ...x, title: e.target.value } : x))
+                      }
+                    />
+                  </label>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span className="muted">Adres (straat + nr)</span>
+                    <input
+                      className="input"
+                      value={s.address}
+                      onChange={(e) =>
+                        setStations(prev => prev.map(x => x.id === s.id ? { ...x, address: e.target.value } : x))
+                      }
+                    />
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span className="muted">Plaats</span>
+                    <input
+                      className="input"
+                      value={s.city}
+                      onChange={(e) =>
+                        setStations(prev => prev.map(x => x.id === s.id ? { ...x, city: e.target.value } : x))
+                      }
+                    />
+                  </label>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span className="muted">Postcode</span>
+                    <input
+                      className="input"
+                      value={s.zip}
+                      onChange={(e) =>
+                        setStations(prev => prev.map(x => x.id === s.id ? { ...x, zip: e.target.value } : x))
+                      }
+                    />
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span className="muted">Land</span>
+                    <input
+                      className="input"
+                      value={s.country}
+                      onChange={(e) =>
+                        setStations(prev => prev.map(x => x.id === s.id ? { ...x, country: e.target.value } : x))
+                      }
+                    />
+                  </label>
+
+                  <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 1fr" }}>
+                    <label style={{ display: "grid", gap: 6 }}>
+                      <span className="muted">Lat</span>
+                      <input
+                        className="input"
+                        value={s.latitude}
+                        onChange={(e) =>
+                          setStations(prev => prev.map(x => x.id === s.id ? { ...x, latitude: e.target.value } : x))
+                        }
+                      />
+                    </label>
+                    <label style={{ display: "grid", gap: 6 }}>
+                      <span className="muted">Lng</span>
+                      <input
+                        className="input"
+                        value={s.longitude}
+                        onChange={(e) =>
+                          setStations(prev => prev.map(x => x.id === s.id ? { ...x, longitude: e.target.value } : x))
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
+                  <button className="btn" onClick={() => saveInline(stations.find(x => x.id === s.id))}>Opslaan</button>
+                  <button className="btn btn-outline" onClick={() => removeStation(s.id)}>Verwijderen</button>
+                  <div className="muted">ID: {s.id}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

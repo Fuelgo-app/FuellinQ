@@ -78,7 +78,7 @@ export default function AppShell({ children }) {
             <li style={{ marginTop: 16, fontWeight: 700, color: "var(--brand-primary, #0b3654)" }}>
               Info
             </li>
-            <Item to="/app/about" icon="ℹ️">Over ons</Item>
+            <Item to="//about" icon="ℹ️">Over ons</Item>
             <Item to="/app/contact" icon="📞">Contact</Item>
           </ul>
 

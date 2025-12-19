@@ -50,13 +50,13 @@ export default function StationsNew() {
   async function lookupAddress() {
     setErr("");
     setOkMsg("");
+
     const pc = normalizePostcode(postalCode);
     if (!pc || !houseNumber) {
       setErr("Vul eerst postcode en huisnummer in.");
       return;
     }
 
-    // ✅ Gebruik nieuwe backend route + genormaliseerde params
     try {
       const { number, add } = splitHouse(houseNumber, addition);
       const url = new URL(`${API_BASE}/api/partner/address-lookup`);
@@ -65,7 +65,7 @@ export default function StationsNew() {
       if (add) url.searchParams.set("addition", add);
 
       const res = await fetch(url.toString(), { headers: authHeaders() });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         if (res.status === 404) {
@@ -75,16 +75,14 @@ export default function StationsNew() {
         throw new Error(data?.error || `Request failed (${res.status})`);
       }
 
-      // Verwachte velden van onze backend: street, number, addition, postcode, city, lat, lng
+      // Verwachte velden van onze backend: street, number, addition, postcode, city, lat, lng, source
       if (data.street) setStreet(data.street);
       if (data.city) setCity(data.city);
       if (data.lat != null) setLat(String(data.lat));
       if (data.lng != null) setLng(String(data.lng));
       if (data.addition && !addition) setAddition(String(data.addition));
 
-      setOkMsg(
-        `Adres gevonden via ${data.source === "pdok" ? "PDOK" : "Nominatim"}.`
-      );
+      setOkMsg(`Adres gevonden via ${data.source === "pdok" ? "PDOK" : "Nominatim"}.`);
     } catch (e) {
       setErr(e.message || "Kon adres niet vinden. Vul handmatig in.");
     }
@@ -104,6 +102,14 @@ export default function StationsNew() {
       return;
     }
 
+    // Optionele numeric check
+    const latNum = lat === "" ? null : Number(lat);
+    const lngNum = lng === "" ? null : Number(lng);
+    if ((lat !== "" && Number.isNaN(latNum)) || (lng !== "" && Number.isNaN(lngNum))) {
+      setErr("Latitude/Longitude moeten getallen zijn (of leeg laten).");
+      return;
+    }
+
     setSaving(true);
     try {
       // Payload keys afgestemd op backend /stations (postcode, lat, lng, country)
@@ -114,8 +120,8 @@ export default function StationsNew() {
         postcode: normalizePostcode(postalCode),
         city: city || null,
         country: "NL",
-        lat: lat ? Number(lat) : null,
-        lng: lng ? Number(lng) : null,
+        lat: latNum,
+        lng: lngNum,
       };
 
       const res = await fetch(`${API_BASE}/api/partner/stations`, {
@@ -123,7 +129,7 @@ export default function StationsNew() {
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Opslaan mislukt.");
 
       setOkMsg("Station opgeslagen.");
@@ -142,6 +148,7 @@ export default function StationsNew() {
         <button
           onClick={() => navigate(-1)}
           className="px-3 py-2 rounded-xl border hover:bg-gray-50"
+          type="button"
         >
           Terug
         </button>

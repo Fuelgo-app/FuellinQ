@@ -1,6 +1,7 @@
 // src/pages/Wallet.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch, API_BASE } from "@/api/base.js";
+import { klEvent } from "@/lib/klaviyo"; // ⬅️ Klaviyo server-side events
 
 /* ---------------- Auth fetch wrapper ---------------- */
 const getToken = () => localStorage.getItem("token") || "";
@@ -8,6 +9,7 @@ const getToken = () => localStorage.getItem("token") || "";
 async function authFetch(path, opts = {}) {
   const token = getToken();
   const headers = {
+    "Content-Type": "application/json",
     ...(opts.headers || {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
@@ -18,6 +20,14 @@ const apiPost   = (p, body)  => authFetch(p, { method: "POST", body: JSON.string
 const apiDelete = (p)        => authFetch(p, { method: "DELETE" });
 
 /* ---------------- Kleine helpers ---------------- */
+function getStoredUser() {
+  // we slaan user op in localStorage of sessionStorage (cookie-first)
+  try {
+    const raw = localStorage.getItem("user") || sessionStorage.getItem("user");
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
 function last4From(card) {
   if (!card) return "";
   if (card.last4) return String(card.last4);
@@ -53,11 +63,22 @@ function NewPrepaidPass({ onCreated }) {
     try {
       setBusy(true); setMsg("");
       const name = (label || "Prepaid tankpas").trim();
-      await apiPost("/api/cards", { label: name });
+      const res = await apiPost("/api/cards", { label: name });
       setLabel("");
       setMsg("Prepaid tankpas aangemaakt ✔");
       onCreated?.();
       document.getElementById("my-cards")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+      // ⬅️ Klaviyo event: pas geactiveerd
+      const user = getStoredUser();
+      try {
+        await klEvent({
+          email: user?.email,
+          external_id: user?.id,
+          event: "Prepaid Card Activated",
+          properties: { label: name, card_id: res?.id || null, source: "wallet-page" },
+        });
+      } catch {}
     } catch (e) {
       setMsg(e.message || "Aanmaken mislukt");
     } finally {
@@ -140,9 +161,6 @@ export default function WalletPage() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
 
-  // Tip voor debug: zie waartegen je praat
-  // console.debug("API_BASE", API_BASE);
-
   /* (a) laad actieve pas expliciet */
   async function loadActive() {
     try {
@@ -198,6 +216,17 @@ export default function WalletPage() {
       await apiPost("/api/cards/select", { cardId }); // server zet actief
       await Promise.all([loadActive(), loadList()]);   // resync
       setMsg("Actieve pas gewijzigd");
+
+      // ⬅️ Klaviyo event: actieve pas gewijzigd
+      const user = getStoredUser();
+      try {
+        await klEvent({
+          email: user?.email,
+          external_id: user?.id,
+          event: "Active Card Changed",
+          properties: { card_id: cardId, source: "wallet-page" },
+        });
+      } catch {}
     } catch (e) {
       setMsg(e.message || "Kon actieve pas niet wijzigen");
     }
@@ -220,6 +249,16 @@ export default function WalletPage() {
     if (!cardId) return alert("Kies eerst een pas.");
     try {
       const res = await apiPost(`/api/wallet/apple/${cardId}`, {});
+      // ⬅️ Klaviyo event: wallet-pass aangevraagd (Apple)
+      const user = getStoredUser();
+      try {
+        await klEvent({
+          email: user?.email,
+          external_id: user?.id,
+          event: "Wallet Pass Requested",
+          properties: { platform: "apple", card_id: cardId },
+        });
+      } catch {}
       if (res?.url) window.location.href = res.url;
       else setMsg("Apple Wallet verzoek verzonden (geen URL terug).");
     } catch (e) {
@@ -231,6 +270,16 @@ export default function WalletPage() {
     if (!cardId) return alert("Kies eerst een pas.");
     try {
       const res = await apiPost(`/api/wallet/google/${cardId}`, {});
+      // ⬅️ Klaviyo event: wallet-pass aangevraagd (Google)
+      const user = getStoredUser();
+      try {
+        await klEvent({
+          email: user?.email,
+          external_id: user?.id,
+          event: "Wallet Pass Requested",
+          properties: { platform: "google", card_id: cardId },
+        });
+      } catch {}
       if (res?.url) window.location.href = res.url;
       else setMsg("Google Wallet verzoek verzonden (geen URL terug).");
     } catch (e) {
@@ -242,6 +291,16 @@ export default function WalletPage() {
     if (!cardId) return alert("Kies eerst een pas.");
     try {
       const res = await apiPost("/api/wallet/pass", { cardId });
+      // ⬅️ Klaviyo event: wallet-pass aangevraagd (Generic/demo)
+      const user = getStoredUser();
+      try {
+        await klEvent({
+          email: user?.email,
+          external_id: user?.id,
+          event: "Wallet Pass Requested",
+          properties: { platform: "generic", card_id: cardId },
+        });
+      } catch {}
       const url = res?.url || res?.appleUrl || res?.googleUrl || "";
       if (url) window.location.href = url;
       else setMsg("Geen wallet-link ontvangen.");

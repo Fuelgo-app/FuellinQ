@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "id": "blankenburg", "name": "Blankenburgverbinding", "country": "NL", "price": 2.50, "currency": "EUR" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[4.3029, 51.9105],[4.3142, 51.9121]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "westerschelde", "name": "Westerscheldetunnel", "country": "NL", "price": 5.00, "currency": "EUR" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[3.7263, 51.4514],[3.7348, 51.4311]]
+      }
+    }
+  ]
+}

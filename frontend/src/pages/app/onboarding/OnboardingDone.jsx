@@ -1,14 +1,18 @@
 // src/pages/OnboardingDone.jsx
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 export default function OnboardingDone() {
   const navigate = useNavigate();
-  const bank = (localStorage.getItem("fuellinq_bank") || "").toUpperCase();
+  const { state } = useLocation(); // { bank, walletAdded }
+  const bankLS = (localStorage.getItem("fuellinq_bank") || "").toUpperCase();
+  const bank = (state?.bank || bankLS || "").toUpperCase();
+
+  const walletAdded = !!state?.walletAdded; // vanuit OnboardingWallet meegeven
 
   return (
     <div className="container" style={{ maxWidth: 860, marginTop: 24, paddingBottom: 24 }}>
-      {/* mini-progress (voltooid) */}
+      {/* mini-progress */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 13, color: "#64748b", marginBottom: 6 }}>Klaar 🎉</div>
         <div style={{ height: 6, background: "#e5e7eb", borderRadius: 999 }}>
@@ -20,9 +24,9 @@ export default function OnboardingDone() {
         Je tankpas is geactiveerd!
       </h1>
       <p style={{ color: "#475569", fontSize: 18, marginBottom: 18 }}>
-        Top, je kunt direct tanken en betalen met je digitale pas. 
-        {bank && <> Bank gekoppeld: <b>{bank}</b>. </>}
-        Nog één ding: voeg je voertuig toe voor slim overzicht en limieten.
+        Top, je kunt direct tanken en betalen met je digitale pas.
+        {bank ? <> Bank gekoppeld: <b>{bank}</b>.</> : <> Bankkoppeling kun je later nog instellen.</>}
+        {" "}Nog één ding: voeg je voertuig toe voor slim overzicht en limieten.
       </p>
 
       <div
@@ -43,8 +47,8 @@ export default function OnboardingDone() {
           <div style={{ fontWeight: 800, marginBottom: 8 }}>Checklist</div>
           <ul style={{ margin: 0, paddingInlineStart: 18, color: "#334155", lineHeight: 1.8 }}>
             <li>✅ Account aangemaakt</li>
-            <li>✅ Bankrekening gekoppeld</li>
-            <li>✅ Digitale tankpas in Wallet</li>
+            <li>{bank ? "✅" : "⬜"} Bankrekening gekoppeld</li>
+            <li>{walletAdded ? "✅" : "⬜"} Digitale tankpas in Wallet</li>
             <li>⬜ Voertuig toevoegen (kenteken & label)</li>
             <li>⬜ Notificaties / factuurinstellingen (optioneel)</li>
           </ul>
@@ -55,41 +59,40 @@ export default function OnboardingDone() {
           <button
             onClick={() => navigate("/app/vehicles")}
             className="btn"
-            style={{
-              background: "#2563eb",
-              color: "#fff",
-              fontWeight: 800,
-              borderRadius: 10,
-              padding: "12px 16px",
-              border: 0,
-              cursor: "pointer",
-            }}
+            style={{ background: "#2563eb", color: "#fff", fontWeight: 800, borderRadius: 10, padding: "12px 16px", border: 0, cursor: "pointer" }}
           >
             ➕ Voertuig toevoegen
           </button>
 
-          <Link
-            to="/app"
-            className="btn btn-outline"
-            style={{
-              textDecoration: "none",
-              border: "1px solid #e5e7eb",
-              borderRadius: 10,
-              padding: "12px 16px",
-              fontWeight: 700,
-              color: "#111827",
-              background: "#fff",
-              textAlign: "center",
-            }}
-          >
-            Naar dashboard
-          </Link>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Link
+              to="/app"
+              className="btn btn-outline"
+              style={{ textDecoration: "none", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 16px", fontWeight: 700, color: "#111827", background: "#fff", textAlign: "center" }}
+            >
+              Naar dashboard
+            </Link>
+            <Link
+              to="/app/wallet"
+              className="btn btn-outline"
+              style={{ textDecoration: "none", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 16px", fontWeight: 700, color: "#111827", background: "#fff", textAlign: "center" }}
+            >
+              + Extra pas toevoegen
+            </Link>
+          </div>
 
           <div style={{ fontSize: 12, color: "#6b7280" }}>
             Tip: stel daglimieten en locaties in bij <b>Voertuigen</b> voor extra controle.
           </div>
         </div>
       </div>
+
+      {/* klein responsive detail */}
+      <style>{`
+        @media (max-width: 860px){
+          .card{ grid-template-columns: 1fr !important; }
+        }
+      `}</style>
     </div>
   );
 }

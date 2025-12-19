@@ -9,9 +9,13 @@ import {
   getPreview,
 } from "@/lib/apiCo2";
 
+import useRdwCombined, { normalizePlate as normalizePlateRdw } from "@/hooks/useRdwCombined.js";
+
 /* ---------- helpers ---------- */
 const fmt = (n, d = 0) =>
-  typeof n === "number" && Number.isFinite(n) ? n.toLocaleString("nl-NL", { maximumFractionDigits: d, minimumFractionDigits: d }) : "–";
+  typeof n === "number" && Number.isFinite(n)
+    ? n.toLocaleString("nl-NL", { maximumFractionDigits: d, minimumFractionDigits: d })
+    : "–";
 
 function prevMonthRange() {
   const now = new Date();
@@ -22,7 +26,6 @@ function prevMonthRange() {
   const iso = (d) => d.toISOString().slice(0, 10);
   return { from: iso(from), to: iso(to) };
 }
-
 function methodLabel(m) {
   if (m === "wltp") return "WLTP (g/km)";
   if (m === "fuel_factor") return "Brandstoffactor (kg/l)";
@@ -32,7 +35,7 @@ function methodLabel(m) {
 
 /* ---------- component ---------- */
 export default function VehicleCo2Card({ initialPlate = "" }) {
-  // auth token uit localStorage voor private endpoints
+  // Cookie/JWT naar CO₂-API doorgeven indien aanwezig
   useEffect(() => {
     try {
       const t = localStorage.getItem("token");
@@ -42,7 +45,9 @@ export default function VehicleCo2Card({ initialPlate = "" }) {
 
   const defaultRange = useMemo(() => prevMonthRange(), []);
   const [plate, setPlate] = useState(initialPlate);
-  const [vehicle, setVehicle] = useState(null);
+  const [vehicle, setVehicle] = useState(null); // uit CO₂-backend (heeft id)
+  const [co2Busy, setCo2Busy] = useState(false);
+  const [co2Err, setCo2Err] = useState("");
 
   const [from, setFrom] = useState(defaultRange.from);
   const [to, setTo] = useState(defaultRange.to);
@@ -50,42 +55,61 @@ export default function VehicleCo2Card({ initialPlate = "" }) {
   const [report, setReport] = useState(null);
   const [preview, setPreview] = useState(null);
 
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
+  // RDW hook (geen auto-fetch bij mount; we willen pas zoeken na klik)
+  const {
+    data: rdwData,
+    loading: rdwLoading,
+    error: rdwError,
+    refetch: rdwRefetch,
+  } = useRdwCombined("", { auto: false, cache: true });
 
   /* ----- actions ----- */
   async function onLookup() {
-    setErr(""); setBusy(true);
+    setCo2Err("");
+    setReport(null);
+    setPreview(null);
+
+    const normalized = normalizePlateRdw((plate || "").trim());
+    if (!normalized) return;
+
+    // 1) RDW lookup (asynchroon, maar we wachten wél hier voor UX)
+    await rdwRefetch(normalized);
+
+    // 2) CO₂ backend lookup (voor acties/rapporten)
+    setCo2Busy(true);
     try {
-      const p = (plate || "").trim();
-      const r = await lookupVehicle(p);
-      setVehicle(r.vehicle);
-      setReport(null); setPreview(null);
+      const r = await lookupVehicle(normalized);
+      setVehicle(r?.vehicle || null);
+      if (!r?.vehicle) {
+        // Niet gevonden in CO₂-systeem — RDW info is wel zichtbaar; acties zijn dan uitgeschakeld.
+        setCo2Err("Voertuig staat nog niet in CO₂-systeem. Log in en/of maak het voertuig eerst aan.");
+      }
     } catch (e) {
-      setErr(e.message || "Zoeken mislukt");
+      setVehicle(null);
+      setCo2Err(e?.message || "Zoeken in CO₂-systeem mislukt");
     } finally {
-      setBusy(false);
+      setCo2Busy(false);
     }
   }
 
   async function onAddOdo() {
     if (!vehicle) return;
-    setErr(""); setBusy(true);
+    setCo2Err(""); setCo2Busy(true);
     try {
       // demo: 2 metingen in dezelfde maand
       await addOdometer(vehicle.id, 120000, `${from}T10:00:00Z`);
       await addOdometer(vehicle.id, 120850, `${to}T17:00:00Z`);
       alert("Kilometerstanden gelogd");
     } catch (e) {
-      setErr(e.message || "Odometer loggen mislukt");
+      setCo2Err(e.message || "Odometer loggen mislukt");
     } finally {
-      setBusy(false);
+      setCo2Busy(false);
     }
   }
 
   async function onAddFuel() {
     if (!vehicle) return;
-    setErr(""); setBusy(true);
+    setCo2Err(""); setCo2Busy(true);
     try {
       const fuel = vehicle.fuel_primary || "Benzine";
       // demo: 2 tankbeurten
@@ -93,21 +117,21 @@ export default function VehicleCo2Card({ initialPlate = "" }) {
       await addFuelTx(vehicle.id, fuel, 45.2, 95.1, `${to}T12:30:00Z`);
       alert("Tankbeurten gelogd");
     } catch (e) {
-      setErr(e.message || "Tankbeurt loggen mislukt");
+      setCo2Err(e.message || "Tankbeurt loggen mislukt");
     } finally {
-      setBusy(false);
+      setCo2Busy(false);
     }
   }
 
   async function onReport() {
     if (!vehicle) return;
-    setErr(""); setBusy(true);
+    setCo2Err(""); setCo2Busy(true);
     try {
       // Rapport (JWT) + publieke preview (zonder JWT)
       const [rep, prv] = await Promise.all([
         getReport(vehicle.id, from, to).catch((e) => {
           // als geen token: toon nette melding maar laat preview wel zien
-          setErr(e.message || "Rapport vereist login (JWT)");
+          setCo2Err(e.message || "Rapport vereist login (JWT)");
           return null;
         }),
         getPreview(vehicle.id, from, to),
@@ -115,9 +139,9 @@ export default function VehicleCo2Card({ initialPlate = "" }) {
       setReport(rep);
       setPreview(prv);
     } catch (e) {
-      setErr(e.message || "Ophalen mislukt");
+      setCo2Err(e.message || "Ophalen mislukt");
     } finally {
-      setBusy(false);
+      setCo2Busy(false);
     }
   }
 
@@ -126,9 +150,12 @@ export default function VehicleCo2Card({ initialPlate = "" }) {
     try { return !!localStorage.getItem("token"); } catch { return false; }
   }, []);
 
+  // RDW brandstofbadge helper
+  const fuelBadges = (rdwData?.brandstoffen || []).map((f) => f?.omschrijving).filter(Boolean);
+
   return (
     <div className="card p-4" style={{ borderRadius: 16 }}>
-      <h3 style={{ marginTop: 0, color: "var(--brand-primary,#0b3654)" }}>CO₂-rapport</h3>
+      <h3 style={{ marginTop: 0, color: "var(--brand-primary,#0b3654)" }}>CO₂-rapport + RDW-lookup</h3>
 
       {/* zoekbalk */}
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -138,55 +165,74 @@ export default function VehicleCo2Card({ initialPlate = "" }) {
           placeholder="Kenteken (bijv. K-123-XY)"
           value={plate}
           onChange={(e) => setPlate(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") onLookup(); }}
         />
-        <button className="btn" onClick={onLookup} disabled={busy || !plate.trim()}>
-          {busy ? "Bezig…" : "Voertuig ophalen"}
+        <button className="btn" onClick={onLookup} disabled={rdwLoading || co2Busy || !plate.trim()}>
+          {rdwLoading || co2Busy ? "Bezig…" : "Voertuig ophalen"}
         </button>
         {!hasToken && (
           <span className="muted" style={{ fontSize: 13 }}>
-            (Tip: log in om het volledige rapport te zien)
+            (Tip: log in om rapport te genereren; RDW-gegevens zijn publiek)
           </span>
         )}
       </div>
 
-      {!!err && (
+      {/* foutmeldingen */}
+      {(rdwError || co2Err) && (
         <div className="alert" style={{ marginTop: 10, color: "#991b1b", background: "#fee2e2", padding: "8px 10px", borderRadius: 10 }}>
-          {err}
+          {rdwError?.message || co2Err}
         </div>
       )}
 
-      {/* voertuigkaart */}
-      {vehicle && (
+      {/* RDW voertuigkaart (altijd tonen als RDW-data er is) */}
+      {rdwData && (
         <div className="card" style={{ marginTop: 12, padding: 12, borderRadius: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <div>
-              <div style={{ fontWeight: 800, marginBottom: 4 }}>{vehicle.license_plate}</div>
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>{rdwData.kenteken}</div>
               <div className="muted">
-                {vehicle.make ?? "–"} {vehicle.model ?? ""}
+                {rdwData.merk ?? "–"} {rdwData.handelsbenaming ?? ""}
+              </div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                {rdwData.voertuigsoort || "—"}{rdwData.eerste_kleur ? ` • ${rdwData.eerste_kleur}` : ""}
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <span className="badge" style={{ marginRight: 6 }}>
-                {vehicle.fuel_primary ?? "—"}
-              </span>
-              <span className="badge">
-                WLTP: {vehicle.wltp_g_per_km != null ? `${vehicle.wltp_g_per_km} g/km` : "—"}
-              </span>
+              {fuelBadges.slice(0, 3).map((b, i) => (
+                <span key={i} className="badge" style={{ marginLeft: 6 }}>{b}</span>
+              ))}
+              {typeof rdwData.co2_gecombineerd_g_km === "number" && (
+                <span className="badge" style={{ marginLeft: 6 }}>
+                  CO₂ comb: {rdwData.co2_gecombineerd_g_km} g/km
+                </span>
+              )}
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <button className="btn btn-outline" onClick={onAddOdo} disabled={busy}>Kilometerstanden (demo)</button>
-            <button className="btn btn-outline" onClick={onAddFuel} disabled={busy}>Tankbeurten (demo)</button>
+          {/* massa/techniek */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8, marginTop: 10 }}>
+            <Info label="Ledig (kg)" value={num(rdwData.massa_ledig_kg)} />
+            <Info label="Rijklaar (kg)" value={num(rdwData.massa_rijklaar_kg)} />
+            <Info label="Max massa (kg)" value={num(rdwData.max_massa_kg)} />
+          </div>
+        </div>
+      )}
+
+      {/* CO₂ acties + periode — alleen als het voertuig in CO₂-systeem bekend is */}
+      {vehicle && (
+        <div className="card" style={{ marginTop: 12, padding: 12, borderRadius: 14 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <button className="btn btn-outline" onClick={onAddOdo} disabled={co2Busy}>Kilometerstanden (demo)</button>
+            <button className="btn btn-outline" onClick={onAddFuel} disabled={co2Busy}>Tankbeurten (demo)</button>
           </div>
 
           {/* periode */}
-          <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
             <span>→</span>
             <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-            <button className="btn" onClick={onReport} disabled={busy}>
-              {busy ? "Berekenen…" : "Rapport + Preview"}
+            <button className="btn" onClick={onReport} disabled={co2Busy}>
+              {co2Busy ? "Berekenen…" : "Rapport + Preview"}
             </button>
           </div>
         </div>
@@ -217,10 +263,7 @@ export default function VehicleCo2Card({ initialPlate = "" }) {
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Preview (publiek)</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 12 }}>
                 {/* Electric */}
-                <PreviewMethod
-                  title="Elektrisch"
-                  details={preview.methods?.electric ? { kg: 0 } : null}
-                />
+                <PreviewMethod title="Elektrisch" details={preview.methods?.electric ? { kg: 0 } : null} />
                 {/* WLTP */}
                 <PreviewMethod
                   title="WLTP"
@@ -247,7 +290,7 @@ export default function VehicleCo2Card({ initialPlate = "" }) {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 12, marginTop: 12 }}>
                 <Stat label="Kilometers (periode)" value={`${fmt(preview.km_total)}`} />
                 <Stat label="Liters (periode)" value={`${fmt(preview.liters_total, 2)}`} />
-                <Stat label="Voertuig" value={`${vehicle?.make ?? "–"} ${vehicle?.model ?? ""}`} />
+                <Stat label="Voertuig" value={`${vehicle?.make ?? rdwData?.merk ?? "–"} ${vehicle?.model ?? rdwData?.handelsbenaming ?? ""}`} />
               </div>
             </div>
           )}
@@ -290,6 +333,15 @@ function Stat({ label, value }) {
   );
 }
 
+function Info({ label, value }) {
+  return (
+    <div className="card" style={{ padding: 10, borderRadius: 12 }}>
+      <div className="muted" style={{ fontSize: 12 }}>{label}</div>
+      <div style={{ fontWeight: 800 }}>{value}</div>
+    </div>
+  );
+}
+
 function PreviewMethod({ title, details }) {
   return (
     <div className="card" style={{ padding: 12, borderRadius: 12 }}>
@@ -305,3 +357,7 @@ function PreviewMethod({ title, details }) {
     </div>
   );
 }
+
+/* ---------- kleine utils ---------- */
+const num = (n) =>
+  typeof n === "number" && Number.isFinite(n) ? n.toLocaleString("nl-NL") : "–";

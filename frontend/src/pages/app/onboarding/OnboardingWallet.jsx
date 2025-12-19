@@ -1,12 +1,13 @@
+// src/pages/app/onboarding/OnboardingWallet.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 /* --- helpers (.env) --- */
 const RAW_API = (import.meta.env.VITE_API_URL ?? "").trim();
-const API_BASE = (RAW_API && RAW_API !== "/" ? RAW_API : "http://localhost:3001").replace(/\/+$/, "");
+const API_BASE = (RAW_API && RAW_API !== "/" ? RAW_API : "http://localhost:3000").replace(/\/+$/, "");
 const getToken = () => localStorage.getItem("token") || "";
 
-/* --- mini fetch helpers met Abort support --- */
+/* --- mini fetch helpers met status in error --- */
 async function apiGet(path, signal) {
   const r = await fetch(`${API_BASE}${path}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
@@ -15,7 +16,11 @@ async function apiGet(path, signal) {
   });
   const ct = r.headers.get("content-type") || "";
   const data = ct.includes("application/json") ? await r.json().catch(() => ({})) : await r.text().catch(() => "");
-  if (!r.ok) throw new Error((data && data.error) || `GET ${path} failed (${r.status})`);
+  if (!r.ok) {
+    const err = new Error((data && (data.error || data.message)) || `GET ${path} failed (${r.status})`);
+    err.status = r.status;
+    throw err;
+  }
   return data;
 }
 async function apiPost(path, body, signal) {
@@ -28,7 +33,11 @@ async function apiPost(path, body, signal) {
   });
   const ct = r.headers.get("content-type") || "";
   const data = ct.includes("application/json") ? await r.json().catch(() => ({})) : await r.text().catch(() => "");
-  if (!r.ok) throw new Error((data && data.error) || `POST ${path} failed (${r.status})`);
+  if (!r.ok) {
+    const err = new Error((data && (data.error || data.message)) || `POST ${path} failed (${r.status})`);
+    err.status = r.status;
+    throw err;
+  }
   return data;
 }
 
@@ -43,18 +52,22 @@ function usePlatform() {
 }
 
 export default function OnboardingWallet() {
-  const { isApple, isAndroid } = usePlatform();
+  const { isApple } = usePlatform();
+  const { state } = useLocation();         // { skipped?, info? } vanuit vorige stap
+  const navigate = useNavigate();
 
   const [status, setStatus] = useState({ linked: false, bank: null });
   const [activeCard, setActiveCard] = useState(null); // {id,label,last4,...}
   const [links, setLinks] = useState({ appleUrl: "", googleUrl: "", genericUrl: "" });
 
-  const [busy, setBusy] = useState(false);     // algemene “bezig”
+  const [busy, setBusy] = useState(false);
   const [issuing, setIssuing] = useState(false);
   const [err, setErr] = useState("");
+  const [skipped, setSkipped] = useState(!!state?.skipped || !!state?.info);
+  const [walletAdded, setWalletAdded] = useState(false);
 
-  const pollTimerRef = useRef(null);
   const mountedRef = useRef(true);
+  const pollTimerRef = useRef(null);
 
   /* ---------- helpers ---------- */
   const isReady = status.linked && !!activeCard?.id;
@@ -62,49 +75,60 @@ export default function OnboardingWallet() {
 
   function clearPoll() {
     if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
+      clearTimeout(pollTimerRef.current);
       pollTimerRef.current = null;
     }
   }
 
-  /* 1) Poll bankstatus totdat linked, pauzeer wanneer tabblad verborgen is */
+  /* 1) Poll bankstatus (NIET wanneer overgeslagen) met backoff via setTimeout */
   useEffect(() => {
     mountedRef.current = true;
     const ctrl = new AbortController();
+
+    if (skipped) return () => ctrl.abort();
+
+    let delay = 2500;          // start snel
+    const maxDelay = 30000;    // cap 30s
 
     const pollOnce = async () => {
       try {
         const d = await apiGet("/api/bank/status", ctrl.signal);
         if (!mountedRef.current) return;
         setStatus({ linked: !!d.linked, bank: d.bank || null });
-        if (d.linked) clearPoll();
-      } catch {
-        // stil falen — we proberen later opnieuw
+        delay = 2500; // reset backoff
+        if (d.linked) {
+          clearPoll();
+          return;
+        }
+      } catch (e) {
+        // 404 = geen endpoint → ga in 'skipped' modus
+        if (e?.status === 404) {
+          if (mountedRef.current) setSkipped(true);
+          clearPoll();
+          return;
+        }
+        // backoff bij tijdelijke fouten
+        delay = Math.min(maxDelay, delay + 3000);
       }
+      // plan volgende tik
+      pollTimerRef.current = setTimeout(pollOnce, delay);
     };
 
-    const startPolling = () => {
-      clearPoll();
-      pollOnce(); // immediate
-      pollTimerRef.current = setInterval(pollOnce, 2500);
-    };
-
-    const onVis = () => {
-      if (document.visibilityState === "visible" && !status.linked) startPolling();
-      if (document.visibilityState === "hidden") clearPoll();
-    };
-
-    startPolling();
-    document.addEventListener("visibilitychange", onVis);
+    pollOnce();
 
     return () => {
       mountedRef.current = false;
       clearPoll();
-      document.removeEventListener("visibilitychange", onVis);
       ctrl.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [skipped]);
+
+  /* 1b) Banknaam persistent houden (voor OnboardingDone fallback) */
+  useEffect(() => {
+    if (status.bank) {
+      try { localStorage.setItem("fuellinq_bank", String(status.bank).toUpperCase()); } catch {}
+    }
+  }, [status.bank]);
 
   /* 2) Wanneer linked => haal/maak actieve pas (eenmalig) */
   useEffect(() => {
@@ -139,7 +163,7 @@ export default function OnboardingWallet() {
     return () => ctrl.abort();
   }, [status.linked]);
 
-  /* 3) (optioneel) haal direct demo/universele link op na koppeling */
+  /* 3) (optioneel) haal demo/universele link op na koppeling */
   useEffect(() => {
     if (!status.linked || !activeCard?.id || links.genericUrl) return;
     const ctrl = new AbortController();
@@ -147,16 +171,19 @@ export default function OnboardingWallet() {
       try {
         const r = await apiPost("/api/wallet/pass", {}, ctrl.signal);
         if (!mountedRef.current) return;
-        setLinks((p) => ({ ...p, genericUrl: r?.url || r?.appleUrl || r?.googleUrl || "" }));
+        const url = r?.url || r?.appleUrl || r?.googleUrl || "";
+        if (url) {
+          setLinks((p) => ({ ...p, genericUrl: url }));
+          setWalletAdded(true);
+        }
       } catch {
         // niet fataal
       }
     })();
     return () => ctrl.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status.linked, activeCard?.id]);
+  }, [status.linked, activeCard?.id, links.genericUrl]);
 
-  /* ---------- button handlers ---------- */
+  /* ---------- wallet actions ---------- */
   const addApple = useMemo(
     () => async () => {
       if (!activeCard?.id || busy) return;
@@ -166,6 +193,7 @@ export default function OnboardingWallet() {
         const url = r?.url || r?.appleUrl || "";
         if (url) {
           setLinks((p) => ({ ...p, appleUrl: url }));
+          setWalletAdded(true);
           window.location.href = url;
         } else {
           setErr("Geen Apple Wallet-URL ontvangen.");
@@ -188,6 +216,7 @@ export default function OnboardingWallet() {
         const url = r?.url || r?.googleUrl || "";
         if (url) {
           setLinks((p) => ({ ...p, googleUrl: url }));
+          setWalletAdded(true);
           window.location.href = url;
         } else {
           setErr("Geen Google Wallet-URL ontvangen.");
@@ -210,6 +239,7 @@ export default function OnboardingWallet() {
         const url = r?.url || r?.appleUrl || r?.googleUrl || "";
         if (url) {
           setLinks((p) => ({ ...p, genericUrl: url }));
+          setWalletAdded(true);
           window.location.href = url;
         } else {
           setErr("Geen wallet-link ontvangen.");
@@ -227,17 +257,50 @@ export default function OnboardingWallet() {
   const primaryCtaLabel = isApple ? " Voeg toe aan Apple Wallet" : "➤ Voeg toe aan Google Wallet";
   const primaryCtaAction = isApple ? addApple : addGoogle;
 
+  function goDone() {
+    navigate("/onboarding/done", {
+      replace: true,
+      state: { bank: status.bank, walletAdded },
+    });
+  }
+
   return (
     <div className="container" style={{ maxWidth: 920, marginTop: 28 }}>
+      {/* Stepper */}
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:10 }}>
+        <span className="badge" style={{ background:"#22c55e", color:"#fff", padding:"4px 10px", borderRadius:999 }}>Stap 1/3 · Account</span>
+        <span className="badge" style={{ background:"#22c55e", color:"#fff", padding:"4px 10px", borderRadius:999 }}>Stap 2/3 · Bank</span>
+        <span className="badge" style={{ background:"#2563eb", color:"#fff", padding:"4px 10px", borderRadius:999 }}>Stap 3/3 · Wallet</span>
+      </div>
+
       <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 12 }}>
         Voeg je digitale tankpas toe aan je Wallet
       </h1>
 
-      <p style={{ color: "#475569", marginBottom: 18 }}>
-        {!status.linked && <>We koppelen je bank (<b>{status.bank?.toUpperCase?.() || "… wachten op koppeling"}</b>). Dit kan enkele seconden duren…</>}
-        {status.linked && !isReady && <>Bank <b>{status.bank?.toUpperCase?.()}</b> is gekoppeld. Je pas wordt aangemaakt…</>}
-        {isReady && <>Bank <b>{status.bank?.toUpperCase?.()}</b> is gekoppeld. Je pas is klaar om toe te voegen.</>}
-      </p>
+      {/* Banner als iemand bank heeft overgeslagen of via state.info kwam */}
+      {(skipped || state?.info) && (
+        <div
+          style={{
+            background: "#fff7ed",
+            border: "1px solid #fdba74",
+            borderRadius: 10,
+            padding: "12px 16px",
+            marginBottom: 16,
+            color: "#9a3412",
+            fontWeight: 500,
+          }}
+        >
+          {state?.info || "Je hebt de bankkoppeling overgeslagen. Je kunt dit later alsnog doen in je dashboard."}
+        </div>
+      )}
+
+      {!skipped && (
+        <p style={{ color: "#475569", marginBottom: 18 }}>
+          {!status.linked && <>We koppelen je bank (<b>{status.bank?.toUpperCase?.() || "… wachten op koppeling"}</b>). Dit kan even duren…</>}
+          {status.linked && !isReady && <>Bank <b>{status.bank?.toUpperCase?.()}</b> is gekoppeld. Je pas wordt aangemaakt…</>}
+          {isReady && <>Bank <b>{status.bank?.toUpperCase?.()}</b> is gekoppeld. Je pas is klaar om toe te voegen.</>}
+        </p>
+      )}
 
       <div className="card" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, padding: 18, borderRadius: 16 }}>
         {/* Visual */}
@@ -261,13 +324,14 @@ export default function OnboardingWallet() {
             </div>
           </div>
 
+          {/* Wallet CTA's */}
           <div style={{ display: "grid", gap: 12 }}>
             <button
               className="btn"
               onClick={primaryCtaAction}
-              disabled={!isReady || busy}
+              disabled={skipped || !isReady || busy}
               style={{
-                background: isReady ? (isApple ? "#000" : "#fff") : "#cbd5e1",
+                background: !skipped && isReady ? (isApple ? "#000" : "#fff") : "#cbd5e1",
                 color: isApple ? "#fff" : "#111827",
                 border: isApple ? "none" : "1px solid #e5e7eb",
                 borderRadius: 12,
@@ -279,11 +343,10 @@ export default function OnboardingWallet() {
               {primaryCtaLabel}
             </button>
 
-            {/* Secondary CTA toont de andere wallet-optie */}
             <button
               className="btn btn-outline"
               onClick={isApple ? addGoogle : addApple}
-              disabled={!isReady || busy}
+              disabled={skipped || !isReady || busy}
               style={{
                 border: "1px solid #e5e7eb",
                 borderRadius: 12,
@@ -291,7 +354,7 @@ export default function OnboardingWallet() {
                 fontWeight: 800,
                 background: "#fff",
                 color: "#111827",
-                opacity: isReady ? 1 : 0.6,
+                opacity: !skipped && isReady ? 1 : 0.6,
               }}
             >
               {isApple ? "➤ Voeg toe aan Google Wallet" : " Voeg toe aan Apple Wallet"}
@@ -300,7 +363,7 @@ export default function OnboardingWallet() {
             <button
               className="btn"
               onClick={addGeneric}
-              disabled={!status.linked || busy}
+              disabled={skipped || busy || (!status.linked && !isReady)}
               style={{
                 background: "#2563eb",
                 color: "#fff",
@@ -315,19 +378,22 @@ export default function OnboardingWallet() {
             {busy && <div style={{ color: "#64748b" }}>Bezig…</div>}
             {err && <div style={{ color: "#b91c1c", fontWeight: 600 }}>{err}</div>}
 
-            <div style={{ fontSize: 13, color: "#64748b" }}>
-              Problemen? Zie de <Link to="/faq">FAQ</Link> of neem <Link to="/contact">contact</Link> op.
-            </div>
-
-            <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+            {/* Doorgaan naar einde onboarding */}
+            <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
+              <button
+                className="btn"
+                onClick={goDone}
+                style={{ background: "#16a34a", color: "#fff", borderRadius: 10, padding: "10px 14px", fontWeight: 800 }}
+              >
+                Doorgaan
+              </button>
               <Link
                 to="/app"
-                className="btn"
-                style={{ background: "#2563eb", color: "#fff", borderRadius: 10, padding: "10px 14px", fontWeight: 800 }}
+                className="btn btn-outline"
+                style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 14px", fontWeight: 800, background: "#fff" }}
               >
                 Naar dashboard
               </Link>
-              <Link to="/" className="btn btn-outline">Later doen</Link>
             </div>
           </div>
         </div>
@@ -339,7 +405,7 @@ export default function OnboardingWallet() {
         <li>📈 Direct inzicht in transacties & kortingen.</li>
       </ul>
 
-      {/* Debug mini-blokje (optioneel zichtbaar houden) */}
+      {/* Debug mini-blokje */}
       <div style={{ marginTop: 16, fontSize: 12, color: "#64748b" }}>
         <div>API_BASE: <code>{API_BASE}</code></div>
         {links.genericUrl && <div>Laatste wallet-link: <code>{links.genericUrl}</code></div>}

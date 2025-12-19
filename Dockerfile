@@ -1,18 +1,20 @@
-# Dockerfile (root van de repo)
+# Dockerfile (root van je repo)
 FROM node:20-alpine
 
-# alleen backend deps cachen
-WORKDIR /app/backend
-COPY backend/package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
-
-# rest van de repo kopiëren (frontend mag mee)
+# Zet werkdirectory
 WORKDIR /app
+
+# Kopieer package.json van backend om dependencies te installeren
+COPY backend/package*.json ./backend/
+RUN cd backend && npm ci --omit=dev
+
+# Kopieer de volledige code
 COPY . .
 
+# Zet environment vars
 ENV NODE_ENV=production
 ENV PORT=3000
 EXPOSE 3000
 
-# ⬅️ start het juiste pad
+# ⬅️ Start het juiste bestand
 CMD ["node", "backend/server.js"]

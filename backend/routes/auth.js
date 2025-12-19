@@ -124,23 +124,6 @@ router.post("/logout", (req, res) => {
   res.json({ ok: true });
 });
 
-/* ---------- GET /api/auth/whoami (publiek, debug) ---------- */
-router.get("/whoami", (req, res) => {
-  const token = readBearerOrCookie(req);
-  if (!token) {
-    return res.json({
-      hasAuthHeader: !!(req.headers.authorization || "").startsWith("Bearer "),
-      cookieTokenPresent: !!(req.cookies?.token || req.cookies?.accessToken || req.cookies?.jwt),
-      cookieName: "token",
-      error: "missing_token",
-    });
-  }
-  try {
-    const user = jwt.verify(token, process.env.JWT_SECRET || "devsecret");
-    return res.json({ ok: true, user });
-  } catch {
-    return res.status(401).json({ error: "invalid_token" });
-  }
-});
+
 
 module.exports = router;

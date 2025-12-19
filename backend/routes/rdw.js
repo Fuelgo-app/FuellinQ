@@ -7,22 +7,23 @@ const router = express.Router();
 
 /* ────────────────────────────────────────────────────────────
    RDW / Socrata
-   Datasets:
-   - m9d7-ebf2 : Basisregistratie voertuigen
-   - 8ys7-d773 : Brandstofgegevens
 ────────────────────────────────────────────────────────────── */
-const RDW_BASE = "https://opendata.rdw.nl/resource";
-const DS_VEHICLES = "m9d7-ebf2";
-const DS_FUELS = "8ys7-d773";
+// ⚠️ Laat RDW_BASE GEEN '/resource' bevatten; dat voegen we in de path toe.
+const RDW_BASE = "https://opendata.rdw.nl";
+const DS_VEHICLES = process.env.RDW_DATASET_VOERTUIGEN || "m9d7-ebf2";
+const DS_FUELS    = process.env.RDW_DATASET_BRANDSTOF   || "8ys7-d773";
 
-const RDW_TIMEOUT_MS = Number(process.env.RDW_TIMEOUT_MS || 3500);
-const RDW_APP_TOKEN = (process.env.RDW_APP_TOKEN || "").trim();
+const RDW_TIMEOUT_MS   = Number(process.env.RDW_TIMEOUT_MS || 12000);
+const RDW_APP_TOKEN    = (process.env.RDW_APP_TOKEN || "").trim();
 const RDW_CACHE_TTL_MS = Number(process.env.RDW_CACHE_TTL_MS || 5 * 60 * 1000); // 5 min
+const RDW_DEBUG        = String(process.env.RDW_DEBUG || "false") === "true";
 const LOG_PREFIX = "[rdw]";
 
 /* ────────────────────────────────────────────────────────────
    Helpers
 ────────────────────────────────────────────────────────────── */
+function dlog(...args) { if (RDW_DEBUG) console.log(LOG_PREFIX, ...args); }
+
 function maskToken(tok) {
   if (!tok) return "(none)";
   const t = String(tok).trim();
@@ -30,9 +31,11 @@ function maskToken(tok) {
   return `${t.slice(0, 3)}…${t.slice(-3)} (len:${t.length})`;
 }
 
+// Normaliseer kenteken zoals RDW het verwacht: uppercase, alleen A-Z/0-9
 function normalizePlate(input = "") {
   return String(input).toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
+
 function parseNum(x) {
   if (x == null || x === "") return null;
   const n = Number(String(x).replace(",", "."));
@@ -41,15 +44,12 @@ function parseNum(x) {
 function parseDate(yyyymmdd) {
   if (!yyyymmdd || String(yyyymmdd).length !== 8) return null;
   const s = String(yyyymmdd);
-  const iso = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-  const d = new Date(iso + "T00:00:00Z");
+  const d = new Date(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T00:00:00Z`);
   return Number.isNaN(d.getTime()) ? null : d;
 }
-function toISODate(d) {
-  return d instanceof Date && !isNaN(d) ? d.toISOString().slice(0, 10) : null;
-}
+function toISODate(d) { return d instanceof Date && !isNaN(d) ? d.toISOString().slice(0,10) : null; }
 
-/** Combineer voertuig & brandstofrijen naar een net object (zelfde vorm als de hook) */
+/** Combineer voertuig & brandstofrijen naar een net object */
 function buildCombined(vehicleRow = {}, fuelRows = []) {
   const v = vehicleRow || {};
   const fuels = Array.isArray(fuelRows) ? fuelRows : [];
@@ -62,6 +62,7 @@ function buildCombined(vehicleRow = {}, fuelRows = []) {
     if (s != null && w != null) return Math.round((s + w) / 2);
     return s ?? w ?? null;
   };
+
   const co2Values = fuels.map(pickCO2).filter((x) => x != null);
   const co2_combined = co2Values.length
     ? Math.round(co2Values.reduce((a, b) => a + b, 0) / co2Values.length)
@@ -78,8 +79,8 @@ function buildCombined(vehicleRow = {}, fuelRows = []) {
     uitstootklasse: r.emissieklasse || r.uitstootklasse || null,
   }));
 
-  const dET = parseDate(v.datum_eerste_toelating);
-  const dTT = parseDate(v.datum_tenaamstelling);
+  const dET  = parseDate(v.datum_eerste_toelating);
+  const dTT  = parseDate(v.datum_tenaamstelling);
   const dAPK = parseDate(v.vervaldatum_apk || v.apk_vervaldatum);
 
   return {
@@ -109,112 +110,123 @@ function buildCombined(vehicleRow = {}, fuelRows = []) {
 }
 
 /* ────────────────────────────────────────────────────────────
-   Axios client
+   Axios helpers (met User-Agent + 403 retry zonder token)
 ────────────────────────────────────────────────────────────── */
-const RDW = axios.create({
-  baseURL: `${RDW_BASE}`,
-  timeout: RDW_TIMEOUT_MS,
-  headers: {
+function ax(withToken = true) {
+  const headers = {
     Accept: "application/json",
-    ...(RDW_APP_TOKEN ? { "X-App-Token": RDW_APP_TOKEN } : {}),
-  },
-});
+    "User-Agent": "FuellinQ/1.0 (+support@fuellinq.app)",
+  };
+  if (withToken && RDW_APP_TOKEN) headers["X-App-Token"] = RDW_APP_TOKEN;
+  return axios.create({ baseURL: RDW_BASE, timeout: RDW_TIMEOUT_MS, headers });
+}
+
+async function rdwGet(path, params) {
+  try {
+    return await ax(true).get(path, { params });
+  } catch (e) {
+    const status = e?.response?.status;
+    if (status === 403 && RDW_APP_TOKEN) {
+      return await ax(false).get(path, { params });
+    }
+    throw e;
+  }
+}
 
 /* ────────────────────────────────────────────────────────────
    Cache (simpel in-memory, TTL)
 ────────────────────────────────────────────────────────────── */
 const CACHE = new Map(); // key: kenteken, value: { data, expiresAt }
-
-function cacheGet(kenteken) {
-  const hit = CACHE.get(kenteken);
+function cacheGet(k) {
+  const hit = CACHE.get(k);
   if (!hit) return null;
-  if (hit.expiresAt && hit.expiresAt > Date.now()) return hit.data;
-  CACHE.delete(kenteken);
+  if (hit.expiresAt > Date.now()) return hit.data;
+  CACHE.delete(k);
   return null;
 }
-function cacheSet(kenteken, data) {
-  CACHE.set(kenteken, { data, expiresAt: Date.now() + RDW_CACHE_TTL_MS });
+function cacheSet(k, data) {
+  CACHE.set(k, { data, expiresAt: Date.now() + RDW_CACHE_TTL_MS });
 }
 
 /* ────────────────────────────────────────────────────────────
-   Low-level fetchers
-────────────────────────────────────────────────────────────── */
+   Low-level fetchers (met fallback WHERE)
+────────────────────────────────────────────────────────── */
 async function fetchVehicle(kenteken) {
-  const qs = new URLSearchParams({ kenteken, $limit: "1" }).toString();
-  const { data } = await RDW.get(`/resource/${DS_VEHICLES}.json?${qs}`);
-  return Array.isArray(data) && data[0] ? data[0] : null;
+  // 1) Standaard query (?kenteken=)
+  const params1 = { kenteken, $limit: "1" };
+  try {
+    const { data } = await rdwGet(`/resource/${DS_VEHICLES}.json`, params1);
+    dlog("vehicles primary", { ds: DS_VEHICLES, count: Array.isArray(data) ? data.length : 0, kenteken });
+    if (Array.isArray(data) && data[0]) return data[0];
+  } catch (e) {
+    dlog("vehicles primary error", e?.response?.status || e?.code || e?.message);
+    throw e;
+  }
+
+  // 2) Fallback met SoQL WHERE
+  const params2 = { $where: `upper(kenteken)='${kenteken}'`, $limit: "1" };
+  const { data: data2 } = await rdwGet(`/resource/${DS_VEHICLES}.json`, params2);
+  dlog("vehicles fallback", { ds: DS_VEHICLES, count: Array.isArray(data2) ? data2.length : 0, where: params2.$where });
+  return Array.isArray(data2) && data2[0] ? data2[0] : null;
 }
+
 async function fetchFuels(kenteken) {
-  const qs = new URLSearchParams({ kenteken, $limit: "5" }).toString();
-  const { data } = await RDW.get(`/resource/${DS_FUELS}.json?${qs}`);
-  return Array.isArray(data) ? data : [];
+  // 1) Standaard query
+  const params1 = { kenteken, $limit: "5" };
+  try {
+    const { data } = await rdwGet(`/resource/${DS_FUELS}.json`, params1);
+    dlog("fuels primary", { ds: DS_FUELS, count: Array.isArray(data) ? data.length : 0, kenteken });
+    if (Array.isArray(data) && data.length) return data;
+  } catch (e) {
+    dlog("fuels primary error", e?.response?.status || e?.code || e?.message);
+    throw e;
+  }
+
+  // 2) Fallback WHERE
+  const params2 = { $where: `upper(kenteken)='${kenteken}'`, $limit: "5" };
+  const { data: data2 } = await rdwGet(`/resource/${DS_FUELS}.json`, params2);
+  dlog("fuels fallback", { ds: DS_FUELS, count: Array.isArray(data2) ? data2.length : 0, where: params2.$where });
+  return Array.isArray(data2) ? data2 : [];
+}
+
+/* ────────────────────────────────────────────────────────────
+   Shared service
+────────────────────────────────────────────────────────────── */
+async function getCombinedByPlate(plate) {
+  const kenteken = normalizePlate(plate);
+  if (!kenteken) {
+    const e = new Error("missing_plate"); e.status = 400; throw e;
+  }
+
+  const cached = cacheGet(kenteken);
+  if (cached) return cached;
+
+  const [vehicle, fuels] = await Promise.all([fetchVehicle(kenteken), fetchFuels(kenteken)]);
+  if (!vehicle && (!fuels || fuels.length === 0)) {
+    const e = new Error("Kenteken niet gevonden."); e.status = 404; throw e;
+  }
+  const combined = buildCombined(vehicle || {}, fuels || []);
+  cacheSet(kenteken, combined);
+  return combined;
+}
+
+/* ────────────────────────────────────────────────────────────
+   Error mapping helpers
+────────────────────────────────────────────────────────────── */
+function mapAxiosError(err) {
+  const status = err?.response?.status || 0;
+  if (err?.code === "ECONNABORTED") return { status: 504, msg: "RDW timeout" };
+  if (status === 403)              return { status: 403, msg: "RDW toegang geweigerd (ongeldige token of geblokkeerd)" };
+  if (status === 429)              return { status: 429, msg: "RDW rate-limit (te veel verzoeken)" };
+  if (status >= 500)               return { status: 502, msg: "RDW service onbereikbaar" };
+  return { status: status || 502, msg: "RDW request mislukt" };
 }
 
 /* ────────────────────────────────────────────────────────────
    Routes
 ────────────────────────────────────────────────────────────── */
 
-/** GET /api/rdw/combined?kenteken=XX
- *  - 200: combined object
- *  - 404: niet gevonden (frontend mag fallback doen)
- */
-router.get("/combined", async (req, res) => {
-  try {
-    const raw = req.query.kenteken || "";
-    const kenteken = normalizePlate(raw);
-    if (!kenteken) return res.status(400).json({ error: "Parameter 'kenteken' ontbreekt of is ongeldig." });
-
-    // cache
-    const cached = cacheGet(kenteken);
-    if (cached) {
-      return res.json(cached);
-    }
-
-    // fetch beide datasets
-    const [vehicle, fuels] = await Promise.all([fetchVehicle(kenteken), fetchFuels(kenteken)]);
-
-    if (!vehicle && (!fuels || fuels.length === 0)) {
-      return res.status(404).json({ error: "Kenteken niet gevonden." });
-    }
-
-    const combined = buildCombined(vehicle || {}, fuels || []);
-    cacheSet(kenteken, combined);
-
-    return res.json(combined);
-  } catch (err) {
-    const status = err?.response?.status || 500;
-    const msg = err?.response?.data?.error || err?.message || "RDW fout";
-    console.error(LOG_PREFIX, "combined error:", status, msg);
-    // Bij 404 uit RDW → geef 404 door
-    if (status === 404) return res.status(404).json({ error: "Kenteken niet gevonden." });
-    return res.status(502).json({ error: "RDW service onbereikbaar", detail: msg });
-  }
-});
-
-/** GET /api/rdw/raw?kenteken=XX
- *  Handig voor debuggen in development.
- */
-router.get("/raw", async (req, res) => {
-  try {
-    const raw = req.query.kenteken || "";
-    const kenteken = normalizePlate(raw);
-    if (!kenteken) return res.status(400).json({ error: "Parameter 'kenteken' ontbreekt of is ongeldig." });
-
-    const [vehicle, fuels] = await Promise.all([fetchVehicle(kenteken), fetchFuels(kenteken)]);
-    if (!vehicle && (!fuels || fuels.length === 0)) {
-      return res.status(404).json({ error: "Kenteken niet gevonden." });
-    }
-    return res.json({ vehicle, fuels });
-  } catch (err) {
-    const status = err?.response?.status || 500;
-    const msg = err?.response?.data?.error || err?.message || "RDW fout";
-    console.error(LOG_PREFIX, "raw error:", status, msg);
-    if (status === 404) return res.status(404).json({ error: "Kenteken niet gevonden." });
-    return res.status(502).json({ error: "RDW service onbereikbaar", detail: msg });
-  }
-});
-
-/** Optioneel healthcheck */
+// Health / info (handig voor debugging & monitoring)
 router.get("/_info", (_req, res) => {
   res.json({
     ok: true,
@@ -226,4 +238,77 @@ router.get("/_info", (_req, res) => {
   });
 });
 
+// Simpele health endpoint (200 OK)
+router.get("/health", (_req, res) => {
+  res.json({ ok: true, up: true, ts: Date.now() });
+});
+
+// DEBUG: ruwe RDW-output direct bekijken
+router.get("/_raw", async (req, res) => {
+  try {
+    const raw = req.query.plate || req.query.kenteken || "";
+    const kenteken = normalizePlate(raw);
+    if (!kenteken) return res.status(400).json({ error: "missing_plate" });
+
+    let vehicleRow, fuelRows;
+    try { vehicleRow = await fetchVehicle(kenteken); }
+    catch (e) { vehicleRow = { __error: mapAxiosError(e) }; }
+    try { fuelRows = await fetchFuels(kenteken); }
+    catch (e) { fuelRows = { __error: mapAxiosError(e) }; }
+
+    res.json({
+      plate_tried: kenteken,
+      ds: { vehicles: DS_VEHICLES, fuels: DS_FUELS },
+      vehicle_row: vehicleRow,
+      fuel_rows_count: Array.isArray(fuelRows) ? fuelRows.length : null,
+      fuel_rows: fuelRows,
+      token_present: Boolean(RDW_APP_TOKEN),
+      timeout_ms: RDW_TIMEOUT_MS
+    });
+  } catch (e) {
+    const mapped = mapAxiosError(e);
+    res.status(mapped.status).json({ error: mapped.msg, detail: e.message || "unknown" });
+  }
+});
+
+async function handleLookup(req, res) {
+  try {
+    const raw = req.method === "POST"
+      ? (req.body?.plate || req.body?.kenteken || "")
+      : (req.query.plate || req.query.kenteken || "");
+    dlog("lookup", { method: req.method, raw });
+
+    const out = await getCombinedByPlate(raw);
+    return res.json(out);
+  } catch (err) {
+    const status = err.status || err?.response?.status;
+    if (status === 404) {
+      return res.status(404).json({
+        error: "Kenteken niet gevonden.",
+        note: "RDW gaf 0 rijen terug voor voertuigen en brandstof.",
+        plate_tried: normalizePlate(req.method === "POST"
+          ? (req.body?.plate || req.body?.kenteken || "")
+          : (req.query.plate || req.query.kenteken || "")),
+        datasets: { vehicles: DS_VEHICLES, fuels: DS_FUELS }
+      });
+    }
+    if (status === 400) return res.status(400).json({ error: "Parameter 'kenteken' ontbreekt of is ongeldig." });
+
+    const mapped = mapAxiosError(err);
+    console.error(LOG_PREFIX, "lookup error:", mapped.status, err.message || err);
+    return res.status(mapped.status).json({ error: mapped.msg, detail: err.message || "unknown" });
+  }
+}
+
+// GET /api/rdw/combined?kenteken=XX of ?plate=XX
+router.get("/combined", handleLookup);
+
+// GET /api/rdw/lookup?plate=XX of ?kenteken=XX
+router.get("/lookup", handleLookup);
+
+// POST /api/rdw/lookup  { plate } of { kenteken }
+router.post("/lookup", handleLookup);
+
 module.exports = router;
+// Optioneel voor hergebruik elders:
+module.exports.getCombinedByPlate = getCombinedByPlate;

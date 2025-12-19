@@ -3,8 +3,7 @@
 console.log("[BUILD] main.jsx loaded");
 
 // src/main.jsx
-// src/main.jsx
-import "@/api/base"; // zorgt dat base.js uitgevoerd wordt en window.API_BASE zet
+import "@/api/base"; // zorgt dat base.js uitgevoerd wordt
 
 import React from "react";
 import ReactDOM from "react-dom/client";
@@ -13,9 +12,6 @@ import App from "./App.jsx";
 import "./index.css";
 import "./ui.css";
 import { applyBrandFromStorage } from "./lib/brand";
-
-// ⬇️ Centrale API-config zichtbaar maken in window.*
-import { API_BASE } from "@/api/base";
 
 // ⬇️ Gebruik je aparte component (zorg dat het zo heet: src/components/ErrorBoundary.jsx)
 import ErrorBoundary from "@/components/ErrorBoundary.jsx";
@@ -27,11 +23,23 @@ try {
   console.warn("Brand load failed:", e);
 }
 
-/* ------------------ API_BASE debug zichtbaar in browser ------------------ */
+/* ------------------ expose config to window (env + fallbacks) ------------------ */
 if (typeof window !== "undefined") {
-  // Handig om snel te checken waarheen requests gaan
-  window.API_BASE = API_BASE;
-  console.log("[API_BASE from main.jsx]", API_BASE);
+  // 👉 accepteer zowel VITE_API_URL als VITE_API_BASE
+  window.API_BASE =
+    import.meta.env.VITE_API_URL ||
+    import.meta.env.VITE_API_BASE ||
+    window.API_BASE || // laat eventueel door base.js gezet waarde staan
+    "http://localhost:3000";
+
+  // 👉 Mapbox token uit env; anders behouden wat er al stond of null
+  window.MAPBOX_TOKEN =
+    import.meta.env.VITE_MAPBOX_TOKEN ||
+    window.MAPBOX_TOKEN ||
+    null;
+
+  console.log("[API_BASE from env]", window.API_BASE);
+  console.log("[MAPBOX] token", window.MAPBOX_TOKEN ? "✓ loaded" : "— not set —");
 }
 
 /* ------------------ ScrollToTop helper ------------------ */

@@ -1,8 +1,8 @@
 // src/pages/dashboard.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { apiGet, apiPost } from "../lib/api"; // centrale API helpers
-import VehicleCo2Card from "../components/VehicleCo2Card.jsx"; // ⬅️ NIEUW: CO₂-kaart
+import { apiGet, apiPost, whoAmI } from "@/api/base"; // cookie-first helpers
+import VehicleCo2Card from "../../components/VehicleCo2Card.jsx";
 import { addFuelTx, listFuelTx, deleteFuelTx, getCo2Summary, getCo2ByMonth } from "@/lib/apiCo2.js";
 
 /* ---------------- Brand logo mapping ---------------- */
@@ -30,9 +30,15 @@ function brandLogoUrl(brand) {
 }
 
 /* ---------- Auth (me + logout) ---------- */
-function logout() {
-  localStorage.removeItem("token");
-  window.location.href = "/login";
+async function logout() {
+  try { await apiPost("/api/auth/logout", {}); } catch {}
+  try {
+    ["token", "role", "user"].forEach((k) => {
+      localStorage.removeItem(k);
+      sessionStorage.removeItem(k);
+    });
+  } catch {}
+  window.location.href = "/auth?mode=login";
 }
 function UserBar({ me }) {
   return (
@@ -283,6 +289,19 @@ function ComparatorPanel({ activeCard }) {
     );
   }
 
+  function normalizeStations(input) {
+    const list = Array.isArray(input?.stations) ? input.stations : (Array.isArray(input) ? input : []);
+    return list.map((s) => ({
+      id: s.id ?? s.station_id ?? s.slug ?? `${s.brand || s.name}-${s.city || s.town || ""}`,
+      brand: s.brand ?? s.operator ?? s.name ?? "Station",
+      city: s.city ?? s.town ?? s.place ?? "",
+      price: s.price ?? s.price_euro_per_litre ?? s.price_eur_per_l ?? s.price_eurol ?? null,
+      distance_km: s.distance_km ?? s.distanceKm ?? s.distance ?? null,
+      offers: s.offers ?? [],
+      logo: s.logo_url ?? null,
+    }));
+  }
+
   async function search(pos = coords) {
     setLoading(true);
     setErr("");
@@ -296,8 +315,9 @@ function ComparatorPanel({ activeCard }) {
           qs.set("lat", pos.lat);
           qs.set("lng", pos.lng);
         }
-        const r = await apiGet(`/api/stations/search?${qs.toString()}`);
-        data = r;
+        // ⬇️ PUBLIEK endpoint
+        const r = await apiGet(`/api/partner/public/stations${qs.toString() ? `?${qs.toString()}` : ""}`);
+        data = { items: normalizeStations(r) };
       } catch {
         // Demo fallback
         data = {
@@ -647,10 +667,14 @@ export default function Dashboard() {
   useEffect(() => {
     (async () => {
       try {
-        const m = await apiGet("/me");
-        setMe(m?.user || m);
+        const m = await whoAmI(); // cookie-first sessie
+        setMe(m);
+        if (!m) {
+          await logout();
+          return;
+        }
       } catch {
-        logout();
+        await logout();
         return;
       }
 

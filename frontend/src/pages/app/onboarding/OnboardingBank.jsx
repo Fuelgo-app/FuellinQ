@@ -1,7 +1,18 @@
 // src/pages/OnboardingBank.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { apiFetch } from "@/api/base"; // gebruikt jouw /src/api/base.js
+import { apiFetch } from "@/api/base";
+
+// Eenvoudige helper om (optioneel) een Klaviyo event te sturen via jouw backend.
+// Foutjes mogen nooit de flow blokkeren.
+async function sendKlEvent({ email, event, properties }) {
+  try {
+    await apiFetch("/api/klaviyo/event", {
+      method: "POST",
+      body: JSON.stringify({ email, event, properties }),
+    });
+  } catch {}
+}
 
 const BANKS = [
   { id: "abn",   name: "ABN AMRO",     logo: "/banks/abnamro.svg" },
@@ -16,13 +27,24 @@ const BANKS = [
 
 export default function OnboardingBank() {
   const [searchParams] = useSearchParams();
-  const [query, setQuery]         = useState("");
-  const [selected, setSelected]   = useState(null);
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState("");
-  const [focusIndex, setFocusIdx] = useState(0);
+  const [query, setQuery]       = useState("");
+  const [selected, setSelected] = useState(null);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState("");
+  const [focusIndex, setFocus]  = useState(0);
   const listRef = useRef(null);
   const navigate = useNavigate();
+
+  // Current user (voor event email)
+  const user = useMemo(() => {
+    try {
+      return JSON.parse(
+        localStorage.getItem("user") || sessionStorage.getItem("user") || "null"
+      );
+    } catch {
+      return null;
+    }
+  }, []);
 
   // Preselect via ?bank=ing
   useEffect(() => {
@@ -30,32 +52,28 @@ export default function OnboardingBank() {
     if (preset && BANKS.some(b => b.id === preset)) {
       setSelected(preset);
       const idx = BANKS.findIndex(b => b.id === preset);
-      if (idx >= 0) setFocusIdx(idx);
+      if (idx >= 0) setFocus(idx);
     }
   }, [searchParams]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return BANKS;
-    return BANKS.filter(b =>
-      b.id.includes(q) || b.name.toLowerCase().includes(q)
+    return BANKS.filter(
+      b => b.id.includes(q) || b.name.toLowerCase().includes(q)
     );
   }, [query]);
 
-  // Toetsenbordnavigatie (focus binnen grid)
+  // Grid keyboard support
   function onKeyDown(e) {
     if (!filtered.length) return;
-    const cols = Math.max(1, Math.floor((listRef.current?.clientWidth || 600) / 240)); // ~min 220px tegels
-    if (["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(e.key)) {
-      e.preventDefault();
-    }
-    if (e.key === "ArrowRight") setFocusIdx(i => Math.min(i + 1, filtered.length - 1));
-    if (e.key === "ArrowLeft")  setFocusIdx(i => Math.max(i - 1, 0));
-    if (e.key === "ArrowDown")  setFocusIdx(i => Math.min(i + cols, filtered.length - 1));
-    if (e.key === "ArrowUp")    setFocusIdx(i => Math.max(i - cols, 0));
-    if (e.key === "Enter" && filtered[focusIndex]) {
-      setSelected(filtered[focusIndex].id);
-    }
+    const cols = Math.max(1, Math.floor((listRef.current?.clientWidth || 600) / 240));
+    if (["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(e.key)) e.preventDefault();
+    if (e.key === "ArrowRight") setFocus(i => Math.min(i + 1, filtered.length - 1));
+    if (e.key === "ArrowLeft")  setFocus(i => Math.max(i - 1, 0));
+    if (e.key === "ArrowDown")  setFocus(i => Math.min(i + cols, filtered.length - 1));
+    if (e.key === "ArrowUp")    setFocus(i => Math.max(i - cols, 0));
+    if (e.key === "Enter" && filtered[focusIndex]) setSelected(filtered[focusIndex].id);
   }
 
   async function continueNext() {
@@ -63,30 +81,31 @@ export default function OnboardingBank() {
     setError("");
     setLoading(true);
     try {
-      // Backend mag teruggeven:
-      // 1) { redirectUrl: "https://bank/consent/..." }
-      // 2) { status: "linked" } of { linked: true } -> direct door
-      // 3) { pending: true } -> laat melding zien
+      // Event: gekozen bank (best-effort)
+      await sendKlEvent({
+        email: user?.email,
+        event: "Onboarding: Bank Selected",
+        properties: { bank: selected },
+      });
+
+      // Backend call — mag redirect/linked/pending geven; anders gaan we toch door.
       const res = await apiFetch("/api/bank/link", {
         method: "POST",
         body: JSON.stringify({ bank: selected }),
-      });
+      }).catch(() => ({})); // tolerant
 
       if (res?.redirectUrl) {
         window.location.href = res.redirectUrl;
         return;
       }
-      if (res?.status === "linked" || res?.linked === true) {
-        navigate("/onboarding/wallet");
+      if (res?.status === "linked" || res?.linked === true || res?.pending) {
+        navigate("/onboarding/wallet", {
+          replace: true,
+          state: { info: res?.pending ? "Bankkoppeling in behandeling." : undefined },
+        });
         return;
       }
-      if (res?.pending) {
-        // bijvoorbeeld indien consent eerst bevestigd moet worden
-        navigate("/onboarding/wallet", { state: { info: "Bankkoppeling in behandeling, even geduld." } });
-        return;
-      }
-      // fallback: als geen duidelijke respons -> toon melding maar ga toch door
-      navigate("/onboarding/wallet");
+      navigate("/onboarding/wallet", { replace: true });
     } catch (e) {
       setError(e?.message || "Er ging iets mis bij het koppelen.");
     } finally {
@@ -94,14 +113,27 @@ export default function OnboardingBank() {
     }
   }
 
+  async function skipBank() {
+    await sendKlEvent({
+      email: user?.email,
+      event: "Onboarding: Bank Skipped",
+      properties: { step: "bank" },
+    });
+    navigate("/onboarding/wallet", { replace: true, state: { info: "Je kunt later altijd je bank koppelen via Instellingen." } });
+  }
+
   return (
     <div className="container" style={{ maxWidth: 920, marginTop: 28 }}>
-      <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 12 }}>
-        Koppel je bankrekening
-      </h1>
+      {/* Stepper */}
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:10 }}>
+        <span className="badge" style={{ background:"#22c55e", color:"#fff", padding:"4px 10px", borderRadius:999 }}>Stap 1/3 · Account</span>
+        <span className="badge" style={{ background:"#2563eb", color:"#fff", padding:"4px 10px", borderRadius:999 }}>Stap 2/3 · Bank koppelen</span>
+        <span className="badge" style={{ background:"#e5e7eb", color:"#111827", padding:"4px 10px", borderRadius:999 }}>Stap 3/3 · Wallet</span>
+      </div>
+
+      <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 12 }}>Koppel je bankrekening</h1>
       <p style={{ color: "#475569", marginBottom: 16 }}>
-        Kies je bank om je rekening veilig te koppelen. Dit is nodig om je{" "}
-        <b>gratis digitale FuellinQ tankpas</b> te activeren.
+        Kies je bank om je rekening veilig te koppelen. Wil je dit later doen? Kies dan <b>Overslaan</b>.
       </p>
 
       <div className="card" style={{ padding:16, borderRadius:16, border:"1px solid #e5e7eb", boxShadow:"0 8px 24px rgba(2,6,23,0.06)" }}>
@@ -117,10 +149,7 @@ export default function OnboardingBank() {
             onChange={e => setQuery(e.target.value)}
             placeholder="Bijv. ING, Rabobank, bunq…"
             onKeyDown={onKeyDown}
-            style={{
-              width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid #e5e7eb",
-              outline:"none"
-            }}
+            style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid #e5e7eb", outline:"none" }}
           />
         </div>
 
@@ -141,7 +170,7 @@ export default function OnboardingBank() {
                 key={b.id}
                 role="option"
                 aria-selected={active}
-                onClick={() => { setSelected(b.id); setFocusIdx(idx); }}
+                onClick={() => { setSelected(b.id); setFocus(idx); }}
                 className="bank-tile"
                 tabIndex={focused ? 0 : -1}
                 style={{
@@ -173,7 +202,7 @@ export default function OnboardingBank() {
 
         {/* Actions */}
         <div style={{ display:"flex", gap:10, marginTop:16, justifyContent:"space-between", alignItems:"center" }}>
-          <Link to="/signup" className="btn btn-outline" style={{
+          <Link to="/auth?mode=signup" className="btn btn-outline" style={{
             textDecoration:"none", border:"1px solid #e5e7eb",
             padding:"10px 14px", borderRadius:10, color:"#111827",
             fontWeight:700, background:"#fff",
@@ -182,6 +211,7 @@ export default function OnboardingBank() {
           </Link>
 
           <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+            <button type="button" className="btn btn-outline" onClick={skipBank}>Overslaan</button>
             {loading && (
               <span aria-live="polite" style={{ fontSize:12, color:"#6b7280" }}>
                 Bezig met koppelen…

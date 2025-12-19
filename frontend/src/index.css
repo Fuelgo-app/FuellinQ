@@ -644,23 +644,64 @@ button[class*="ring-blue"], a[class*="ring-blue"] {
 }
 #partner-offers .ig-tile:hover .ig-actions{ opacity:1; transform:translateY(0); }
 /* ====== VISIBILITY RESCUE (debug) ====== */
-#root { min-height: 100vh; outline: 0; }
-body, #root, #root * {
-  opacity: 1 !important;
-  visibility: visible !important;
-}
-[hidden], .hidden { display: none !important; }
+/* ===== Clean production helpers (vervangt oude debug/visibility blok) ===== */
 
-/* tijdelijk: forceer donkere tekst zodat wit-op-wit niet kan gebeuren */
-#root, #root * { color: #111827 !important; }
-
-/* optioneel: laat even zien dát er DOM is */
-#root { outline: 2px dashed rgba(11,54,84,.25); }
-/* ===== Visibility rescue – tijdelijk voor debug ===== */
+/* Basis: paginahoogte en hidden utility */
 #root { min-height: 100vh; }
-body, #root, #root * {
-  opacity: 1 !important;
-  visibility: visible !important;
-  color: #111827 !important; /* tekst zeker zichtbaar */
-}
 [hidden], .hidden { display: none !important; }
+
+/* Form controls normaliseren (Safari/iOS randjes/appearance) */
+input,
+select,
+textarea,
+button {
+  -webkit-appearance: none;
+  appearance: none;
+  background-clip: padding-box; /* voorkomt donkere randjes in iOS */
+  border-radius: inherit;
+}
+
+/* Focus-ring consistent (fallback) */
+:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(47,104,255,.20);
+}
+
+/* ===== Vehicles hero helpers (alleen gebruikt door Vehicles.jsx) ===== */
+.veh-hero-title,
+.veh-hero-sub {
+  color: #fff !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,.35);
+}
+
+/* Gele plaat + CTA zonder borders/box-shadows */
+.veh-plate-wrap,
+.veh-cta-wrap {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Mooie afgeronde uiteinden voor het kentekenveld */
+.veh-plate-left  { border-top-left-radius: 16px; border-bottom-left-radius: 16px; }
+.veh-plate-right { border-top-right-radius: 16px; border-bottom-right-radius: 16px; }
+
+/* Kaartschaduw onder het paneel onder de hero */
+.panel-card { box-shadow: 0 14px 36px rgba(2,6,23,.18) !important; }
+/* ===== Vehicles: hero hard override (voorkom 'zebra' achtergrond) ===== */
+#vehicles-page .veh-hero::before,
+#vehicles-page .veh-hero::after {
+  content: none !important;              /* kill eventuele global hero layers */
+}
+
+#vehicles-page .veh-hero {
+  /* eigen achtergrond forceren, wint van generieke .hero rules */
+  background: linear-gradient(180deg, rgba(2,6,23,.20), rgba(2,6,23,.55)),
+              url("/assets/road-hero.jpg") center / cover no-repeat !important;
+}
+
+/* optioneel: extra veiligheid als er ergens een .hero rule meedraait */
+#vehicles-page .veh-hero.hero {
+  background: linear-gradient(180deg, rgba(2,6,23,.20), rgba(2,6,23,.55)),
+              url("/assets/road-hero.jpg") center / cover no-repeat !important;
+}

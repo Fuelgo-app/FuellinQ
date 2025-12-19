@@ -1,13 +1,38 @@
-
 <!doctype html>
 <html lang="nl">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MaxAndGo</title>
+    <title>FuelLinq</title>
+
+    <!-- 🔹 Klaviyo onsite tracking (werkt met Vite) -->
+    <!-- Zorg dat .env.local bevat: VITE_KLAVIYO_PUBLIC_KEY=TXqUaR -->
+    <script type="module">
+      const id = import.meta.env.VITE_KLAVIYO_PUBLIC_KEY || "";
+      if (!id) {
+        console.warn("[Klaviyo] VITE_KLAVIYO_PUBLIC_KEY ontbreekt");
+      } else {
+        // set account + laad script dynamisch
+        window._klOnsite = window._klOnsite || [];
+        window._klOnsite.push(["account", id]);
+
+        const s = document.createElement("script");
+        s.defer = true;
+        s.src = `https://static.klaviyo.com/onsite/js/klaviyo.js?company_id=${id}`;
+        document.head.appendChild(s);
+      }
+    </script>
+
+    <!-- 🔹 Meta & favicon -->
+    <link rel="icon" type="image/png" href="/assets/favicon.png" />
+    <meta name="description"
+          content="FuelLinq – de slimme prepaid tankpas met CO₂-rapportage, wallet-integratie en Green Deal-ready mobiliteitsoplossing." />
   </head>
+
   <body>
     <div id="root"></div>
+
+    <!-- Vite app bundle -->
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

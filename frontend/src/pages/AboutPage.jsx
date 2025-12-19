@@ -1,67 +1,36 @@
 // src/pages/AuthPage.jsx
 import React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import api, { setToken } from "@/api/base"; // korte helpers + setToken uit base
+import { apiPost, whoAmI, clearToken } from "@/api/base"; // cookie-first helpers
+import { klIdentify, klSubscribe, klEvent } from "@/lib/klaviyo"; // ⬅️ nieuw
 
 /* ================= Helpers ================= */
-
-// Foutcodes -> nette UI-teksten
 function mapAuthErrorMessage(err) {
   const raw = String(err?.message || "").toLowerCase();
   if (raw.includes("invalid_login")) return "E-mailadres of wachtwoord klopt niet.";
-  if (raw.includes("missing_credentials")) return "Vul je e-mailadres en wachtwoord in.";
+  if (raw.includes("missing_fields") || raw.includes("missing_credentials")) return "Vul je e-mailadres en wachtwoord in.";
   if (raw.includes("server_error")) return "Er ging iets mis op de server. Probeer het zo opnieuw.";
-  if (raw.includes("post") && raw.includes("failed")) return "Kan geen verbinding maken met de server.";
+  if (raw.includes("network_error")) return "Netwerk/CORS probleem. Controleer je verbinding of domeinen.";
+  if (raw.match(/http 4\d\d/)) return "Aanvraag geweigerd. Controleer je invoer.";
+  if (raw.match(/http 5\d\d/)) return "Serverfout. Probeer het zo opnieuw.";
   return err?.message || "Actie mislukt. Probeer het opnieuw.";
 }
 
-// Bewaar auth in gekozen storage (localStorage voor onthouden, anders sessionStorage)
-function setAuthInStorage({ token, user }, remember = true) {
+// Alleen user/role bijhouden voor UI; GEEN token
+function setAuthInStorage({ user }, remember = true) {
   const L = window.localStorage;
   const S = window.sessionStorage;
+  const T = remember ? L : S;
+  const O = remember ? S : L;
 
-  // setToken schrijft standaard naar localStorage (conform jouw helper)
-  // → we roepen setToken altijd, en verplaatsen naar sessionStorage als 'remember' uit staat.
-  if (token) setToken(token);
-
+  if (user) T.setItem("user", JSON.stringify(user));
   const role = user?.role ?? "";
+  if (role) T.setItem("role", role);
 
-  if (remember) {
-    if (user) L.setItem("user", JSON.stringify(user));
-    if (role) L.setItem("role", role);
-    // andere storage opschonen
-    S.removeItem("token"); S.removeItem("user"); S.removeItem("role");
-  } else {
-    // verplaats token + user naar sessionStorage
-    if (token) {
-      S.setItem("token", token);
-      L.removeItem("token");
-    }
-    if (user) {
-      S.setItem("user", JSON.stringify(user));
-      L.removeItem("user");
-    }
-    if (role) {
-      S.setItem("role", role);
-      L.removeItem("role");
-    }
-  }
+  ["user", "role", "token"].forEach((k) => O.removeItem(k));
+  try { clearToken(); } catch {}
 }
 
-// Lees auth uit beide storages
-function getAuthFromStorage() {
-  const L = window.localStorage;
-  const S = window.sessionStorage;
-  const token = L.getItem("token") || S.getItem("token") || "";
-  let user = null;
-  try {
-    user = JSON.parse(L.getItem("user") || S.getItem("user") || "null");
-  } catch {}
-  const role = L.getItem("role") || S.getItem("role") || (user?.role ?? "");
-  return { token, user, role };
-}
-
-// Role -> default route
 function roleToPath(role) {
   if (!role) return "/app";
   const r = String(role).toLowerCase();
@@ -71,37 +40,55 @@ function roleToPath(role) {
 }
 
 /* ================= Component ================= */
-
 export default function AuthPage({ mode = "login", onAuthed }) {
-  const isSignup = mode === "signup";
+  const navigate = useNavigate();
+  const { search } = useLocation();
+  const params = React.useMemo(() => new URLSearchParams(search), [search]);
+  const next = params.get("next") || null;
+  const qsMode = (params.get("mode") || mode).toLowerCase();
+  const isSignup = qsMode === "signup";
 
-  // Form state
+  // form state
   const [first, setFirst] = React.useState("");
   const [last, setLast] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [pass, setPass] = React.useState("");
   const [showPass, setShowPass] = React.useState(false);
-  const [remember, setRemember] = React.useState(true); // “Onthoud mij”
+  const [remember, setRemember] = React.useState(true);
+  const [marketing, setMarketing] = React.useState(true); // ⬅️ opt-in checkbox
 
-  // UI state
+  // ui state
   const [msg, setMsg] = React.useState("");
   const [pending, setPending] = React.useState(false);
+  const [verifying, setVerifying] = React.useState(true);
 
-  // Routing
-  const navigate = useNavigate();
-  const { search } = useLocation();
-  const params = React.useMemo(() => new URLSearchParams(search), [search]);
-  const next = params.get("next");
-
-  // Validatie
+  // validatie
   const emailOk = /\S+@\S+\.\S+/.test(email);
   const passOk = (pass || "").length >= 6;
-  const canSubmit = !pending && emailOk && passOk;
+  const canSubmit = !pending && !verifying && emailOk && passOk;
 
-  // Auto-redirect als er al een token is
+  // ⛳️ zorg dat we maar één keer navigeren (fix redirect loop)
+  const didNavigateRef = React.useRef(false);
+
+  // Cookie-first: check server-sessie via whoAmI
   React.useEffect(() => {
-    const { token, role } = getAuthFromStorage();
-    if (token) navigate(next || roleToPath(role), { replace: true });
+    let alive = true;
+    (async () => {
+      try {
+        const user = await whoAmI();
+        if (!alive) return;
+        if (user) {
+          setAuthInStorage({ user }, true);
+          if (!didNavigateRef.current) {
+            didNavigateRef.current = true;
+            navigate(next || roleToPath(user.role), { replace: true });
+          }
+        }
+      } finally {
+        if (alive) setVerifying(false);
+      }
+    })();
+    return () => { alive = false; };
   }, [navigate, next]);
 
   async function submit(e) {
@@ -111,26 +98,50 @@ export default function AuthPage({ mode = "login", onAuthed }) {
     setMsg("");
     setPending(true);
     try {
+      let res, user;
+
       if (isSignup) {
-        const { token, user } = await api.post("/api/auth/register", {
+        res = await apiPost("/api/auth/register", {
           email: email.trim(),
           password: pass,
           first_name: first || null,
           last_name: last || null,
         });
-
-        setAuthInStorage({ token, user }, remember);
-        onAuthed?.(user ?? null);
-        navigate("/onboarding/bank", { replace: true });
       } else {
-        const { token, user } = await api.post("/api/auth/login", {
+        res = await apiPost("/api/auth/login", {
           email: email.trim(),
           password: pass,
         });
+      }
 
-        setAuthInStorage({ token, user }, remember);
-        onAuthed?.(user ?? null);
-        navigate(next || roleToPath(user?.role), { replace: true });
+      // warm sessie + haal user uit cookie
+      try { user = await whoAmI(); } catch {}
+      user = user || res?.user || null;
+      if (!user) throw new Error("Login gelukt maar sessie niet gevonden.");
+
+      // ✅ Onsite identify (browser) + evt. subscribe (alleen bij expliciete opt-in)
+      try { klIdentify({ email: email.trim(), first_name: first, last_name: last }); } catch {}
+      if (isSignup && marketing) {
+        try {
+          await klSubscribe({
+            email: email.trim(),
+            first_name: first || null,
+            last_name: last || null,
+            consent: "email",
+            properties: { plan: "prepaid", brand: "FuelLinq" },
+          });
+        } catch {}
+      }
+      // Event
+      try { await klEvent({ email: email.trim(), event: isSignup ? "Signup" : "Login" }); } catch {}
+
+      setAuthInStorage({ user }, remember);
+      onAuthed?.(user ?? null);
+
+      const target = isSignup ? "/onboarding/bank" : (next || roleToPath(user?.role));
+      if (!didNavigateRef.current) {
+        didNavigateRef.current = true;
+        navigate(target, { replace: true });
       }
     } catch (err) {
       setMsg(mapAuthErrorMessage(err));
@@ -143,94 +154,65 @@ export default function AuthPage({ mode = "login", onAuthed }) {
     <div className="signup-wrapper">
       <div className="container" style={{ maxWidth: 880, margin: "0 auto", padding: "28px 16px 48px" }}>
         {msg && (
-          <div
-            className="card"
-            role="alert"
-            style={{ padding: 12, marginBottom: 12, background: "#fff7ed", border: "1px solid #fdba74", color: "#9a3412" }}
-          >
+          <div className="card" role="alert"
+               style={{ padding: 12, marginBottom: 12, background: "#fff7ed", border: "1px solid #fdba74", color: "#9a3412" }}>
             {msg}
           </div>
         )}
+
+        {verifying && <div className="card" style={{ padding: 10, marginBottom: 12 }}>Sessie controleren…</div>}
 
         <form className="card" onSubmit={submit} style={{ padding: 18 }}>
           <h2 style={{ marginTop: 0 }}>{isSignup ? "Account aanmaken" : "Log in"}</h2>
 
           {isSignup && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <input
-                className="input"
-                placeholder="Voornaam (optioneel)"
-                value={first}
-                onChange={(e) => setFirst(e.target.value)}
-                autoComplete="given-name"
-              />
-              <input
-                className="input"
-                placeholder="Achternaam (optioneel)"
-                value={last}
-                onChange={(e) => setLast(e.target.value)}
-                autoComplete="family-name"
-              />
+              <input className="input" placeholder="Voornaam (optioneel)" value={first}
+                     onChange={(e) => setFirst(e.target.value)} autoComplete="given-name" />
+              <input className="input" placeholder="Achternaam (optioneel)" value={last}
+                     onChange={(e) => setLast(e.target.value)} autoComplete="family-name" />
             </div>
           )}
 
-          <input
-            className="input"
-            type="email"
-            placeholder="E-mailadres"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ marginTop: 10 }}
-            autoComplete="email"
-            required
-            aria-invalid={!emailOk ? "true" : "false"}
-          />
+          <input className="input" type="email" placeholder="E-mailadres" value={email}
+                 onChange={(e) => setEmail(e.target.value)} style={{ marginTop: 10 }}
+                 autoComplete="email" required aria-invalid={!emailOk ? "true" : "false"} disabled={verifying} />
 
           <div style={{ position: "relative", marginTop: 10 }}>
-            <input
-              className="input"
-              type={showPass ? "text" : "password"}
-              placeholder="Wachtwoord (min. 6 tekens)"
-              value={pass}
-              onChange={(e) => setPass(e.target.value)}
-              autoComplete={isSignup ? "new-password" : "current-password"}
-              required
-              minLength={6}
-              aria-invalid={!passOk ? "true" : "false"}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPass((v) => !v)}
-              className="btn btn-outline"
-              style={{ position: "absolute", right: 6, top: 6, padding: "6px 10px", fontSize: 12 }}
-              aria-label={showPass ? "Verberg wachtwoord" : "Toon wachtwoord"}
-              tabIndex={-1}
-            >
+            <input className="input" type={showPass ? "text" : "password"} placeholder="Wachtwoord (min. 6 tekens)"
+                   value={pass} onChange={(e) => setPass(e.target.value)}
+                   autoComplete={isSignup ? "new-password" : "current-password"} required minLength={6}
+                   aria-invalid={!passOk ? "true" : "false"} disabled={verifying} />
+            <button type="button" onClick={() => setShowPass((v) => !v)} className="btn btn-outline"
+                    style={{ position: "absolute", right: 6, top: 6, padding: "6px 10px", fontSize: 12 }}
+                    aria-label={showPass ? "Verberg wachtwoord" : "Toon wachtwoord"} tabIndex={-1} disabled={verifying}>
               {showPass ? "Verberg" : "Toon"}
             </button>
           </div>
 
-          {/* Onthoud mij */}
           <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, userSelect: "none" }}>
-            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} disabled={verifying} />
             <span>Onthoud mij op dit apparaat</span>
           </label>
 
-          <button
-            className="btn"
-            type="submit"
-            disabled={!canSubmit}
-            aria-busy={pending ? "true" : "false"}
-            style={{ width: "100%", marginTop: 12, opacity: canSubmit ? 1 : 0.7 }}
-          >
+          {isSignup && (
+            <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, userSelect: "none" }}>
+              <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} />
+              <span>Ik wil e-mails ontvangen met updates en aanbiedingen</span>
+            </label>
+          )}
+
+          <button className="btn" type="submit" disabled={!canSubmit}
+                  aria-busy={pending ? "true" : "false"}
+                  style={{ width: "100%", marginTop: 12, opacity: canSubmit ? 1 : 0.7 }}>
             {pending ? (isSignup ? "Aanmaken..." : "Inloggen...") : isSignup ? "Account aanmaken" : "Log in"}
           </button>
 
           <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
             {isSignup ? (
-              <Link className="btn btn-outline" to="/login">Ik heb al een account</Link>
+              <Link className="btn btn-outline" to="/auth?mode=login">Ik heb al een account</Link>
             ) : (
-              <Link className="btn btn-outline" to="/signup">Nieuw account</Link>
+              <Link className="btn btn-outline" to="/auth?mode=signup">Nieuw account</Link>
             )}
           </div>
 

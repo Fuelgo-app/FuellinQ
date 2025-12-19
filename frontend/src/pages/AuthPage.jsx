@@ -1,165 +1,192 @@
 // src/pages/AuthPage.jsx
-import React from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  apiPost,
-  login as apiLogin,          // named helper voor login
-  setToken,                      // alleen gebruiken als server ook bearer terugstuurt
-} from "@/api/base";
+import { apiPost, whoAmI, clearToken } from "@/api/base";
 
-/* ================= Helpers ================= */
+/* ───────────────── Helpers ───────────────── */
 
 function mapAuthErrorMessage(err) {
   const raw = String(err?.message || "").toLowerCase();
+
   if (raw.includes("invalid_login")) return "E-mailadres of wachtwoord klopt niet.";
-  if (raw.includes("missing_fields") || raw.includes("missing_credentials"))
-    return "Vul je e-mailadres en wachtwoord in.";
-  if (raw.includes("forbidden")) return "Je hebt geen toegang tot deze pagina.";
-  if (raw.includes("http 401")) return "Niet geautoriseerd. Controleer je inloggegevens.";
-  if (raw.includes("http 404")) return "Service niet gevonden. Neem contact op als dit blijft gebeuren.";
-  if (raw.includes("server_error") || raw.match(/http 5\d\d/)) return "Tijdelijk serverprobleem. Probeer het zo opnieuw.";
-  if (raw.includes("failed") || raw.includes("network")) return "Kan geen verbinding maken met de server.";
-  return err?.message || "Actie mislukt. Probeer het opnieuw.";
-}
+  if (raw.includes("missing_fields")) return "Vul je e-mailadres en wachtwoord in.";
+  if (raw.includes("network_error")) return "Netwerk- of CORS-probleem. Probeer het opnieuw.";
+  if (raw.includes("server_error")) return "Serverfout. Probeer het later opnieuw.";
+  if (raw.match(/http 4\d\d/)) return "Aanvraag geweigerd.";
+  if (raw.match(/http 5\d\d/)) return "Serverfout.";
 
-function setAuthInStorage({ token, user }, remember = true) {
-  const L = window.localStorage;
-  const S = window.sessionStorage;
-
-  // token is optioneel (cookie-only), dus alleen opslaan als aanwezig
-  if (token) setToken(token);
-
-  const role = user?.role ?? "";
-
-  if (remember) {
-    if (user) L.setItem("user", JSON.stringify(user));
-    if (role) L.setItem("role", role);
-    S.removeItem("token"); S.removeItem("user"); S.removeItem("role");
-  } else {
-    if (token) { S.setItem("token", token); L.removeItem("token"); }
-    if (user)  { S.setItem("user", JSON.stringify(user)); L.removeItem("user"); }
-    if (role)  { S.setItem("role", role); L.removeItem("role"); }
-  }
-}
-
-function getAuthFromStorage() {
-  const L = window.localStorage, S = window.sessionStorage;
-  const token = L.getItem("token") || S.getItem("token") || "";
-  let user = null;
-  try { user = JSON.parse(L.getItem("user") || S.getItem("user") || "null"); } catch {}
-  const role = L.getItem("role") || S.getItem("role") || (user?.role ?? "");
-  return { token, user, role };
+  return "Inloggen mislukt. Probeer het opnieuw.";
 }
 
 function roleToPath(role) {
   if (!role) return "/app";
-  const r = String(role).toLowerCase();
+  const r = role.toLowerCase();
   if (r.includes("admin")) return "/admin";
   if (r.includes("partner")) return "/partner";
   return "/app";
 }
 
-/* ================= Component ================= */
+/**
+ * Slaat ALLEEN UI-state op (user + role)
+ * Geen tokens → cookie-first
+ */
+function setAuthInStorage(user, remember) {
+  const primary = remember ? localStorage : sessionStorage;
+  const secondary = remember ? sessionStorage : localStorage;
 
-export default function AuthPage({ mode = "login", onAuthed }) {
-  const isSignup = mode === "signup";
+  if (user) {
+    primary.setItem("user", JSON.stringify(user));
+    primary.setItem("role", user.role || "");
+  }
 
-  // Form state
-  const [first, setFirst] = React.useState("");
-  const [last, setLast]   = React.useState("");
-  const [email, setEmail] = React.useState("");
-  const [pass, setPass]   = React.useState("");
-  const [showPass, setShowPass] = React.useState(false);
-  const [remember, setRemember] = React.useState(true);
+  ["user", "role", "token"].forEach((k) => secondary.removeItem(k));
+  clearToken();
+}
 
-  // UI state
-  const [msg, setMsg] = React.useState("");
-  const [pending, setPending] = React.useState(false);
+/* ───────────────── Component ───────────────── */
 
-  // Routing
+export default function AuthPage({ mode = "login" }) {
   const navigate = useNavigate();
   const { search } = useLocation();
-  const params = React.useMemo(() => new URLSearchParams(search), [search]);
+  const params = useMemo(() => new URLSearchParams(search), [search]);
+
   const next = params.get("next");
+  const qsMode = (params.get("mode") || mode).toLowerCase();
+  const isSignup = qsMode === "signup";
 
-  // Validatie
+  /* ───── State ───── */
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [first, setFirst] = useState("");
+  const [last, setLast] = useState("");
+
+  const [remember, setRemember] = useState(true);
+  const [showPass, setShowPass] = useState(false);
+
+  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false);
+  const [verifying, setVerifying] = useState(true);
+
+  const didRedirect = useRef(false);
+
   const emailOk = /\S+@\S+\.\S+/.test(email);
-  const passOk = (pass || "").length >= 6;
-  const canSubmit = !pending && emailOk && passOk;
+  const passOk = password.length >= 6;
+  const canSubmit = emailOk && passOk && !pending && !verifying;
 
-  // Auto-redirect als je al ingelogd bent (op basis van lokaal opgeslagen token/role)
-  React.useEffect(() => {
-    const { token, role } = getAuthFromStorage();
-    if (token) navigate(next || roleToPath(role), { replace: true });
+  /* ───── Session check bij mount (SOFT) ───── */
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const user = await whoAmI();
+        if (!alive) return;
+
+        if (user && !didRedirect.current) {
+          didRedirect.current = true;
+          setAuthInStorage(user, true);
+          navigate(next || roleToPath(user.role), { replace: true });
+        }
+      } catch {
+        // ❗️NIET uitloggen — cookies kunnen cross-site geblokkeerd zijn
+      } finally {
+        if (alive) setVerifying(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, [navigate, next]);
 
-  async function submit(e) {
-    e?.preventDefault?.();
+  /* ───── Submit ───── */
+  async function onSubmit(e) {
+    e.preventDefault();
     if (!canSubmit) return;
 
-    setMsg("");
+    setMessage("");
     setPending(true);
-    try {
-      const payload = {
-        email: email.trim(),
-        password: pass,
-        ...(isSignup ? { first_name: first || null, last_name: last || null } : {}),
-      };
 
-      let token, user;
+    try {
+      let res;
 
       if (isSignup) {
-        // Registratie via apiPost helper – zet cookie server-side en (optioneel) bearer in body
-        const res = await apiPost("/api/auth/register", payload);
-        token = res?.token || ""; // optioneel
-        user  = res?.user  || null;
-
-        // Auth info bijhouden (token optioneel omdat cookie HttpOnly kan zijn)
-        setAuthInStorage({ token, user }, remember);
-        onAuthed?.(user ?? null);
-
-        // Door naar onboarding of app
-        navigate("/onboarding/bank", { replace: true });
+        res = await apiPost("/api/auth/register", {
+          email: email.trim(),
+          password,
+          first_name: first || null,
+          last_name: last || null,
+        });
       } else {
-        // Login via named helper (hybride)
-        const resUser = await apiLogin(payload.email, payload.password);
-        user = resUser || null;
+        res = await apiPost("/api/auth/login", {
+          email: email.trim(),
+          password,
+        });
+      }
 
-        // In base.js wordt token (indien aanwezig) al opgeslagen; we zorgen hier voor user/role
-        setAuthInStorage({ token: null, user }, remember);
-        onAuthed?.(user ?? null);
+      // 🔑 Cookie kan falen → fallback op response.user
+      let user = null;
+      try {
+        user = await whoAmI({ force: true, cacheMs: 0 });
+      } catch {}
 
-        // Door naar rol-pad of "next"
-        navigate(next || roleToPath(user?.role), { replace: true });
+      user = user || res?.user;
+
+      if (!user) {
+        throw new Error("Geen gebruiker ontvangen na login.");
+      }
+
+      setAuthInStorage(user, remember);
+
+      if (!didRedirect.current) {
+        didRedirect.current = true;
+        navigate(
+          isSignup ? "/onboarding/bank" : next || roleToPath(user.role),
+          { replace: true }
+        );
       }
     } catch (err) {
-      setMsg(mapAuthErrorMessage(err));
+      setMessage(mapAuthErrorMessage(err));
     } finally {
       setPending(false);
     }
   }
 
+  /* ───────────────── UI ───────────────── */
+
   return (
     <div className="signup-wrapper">
-      <div className="container" style={{ maxWidth: 880, margin: "0 auto", padding: "28px 16px 48px" }}>
-        {msg && (
-          <div
-            className="card"
-            role="alert"
-            style={{ padding: 12, marginBottom: 12, background: "#fff7ed", border: "1px solid #fdba74", color: "#9a3412" }}
-          >
-            {msg}
+      <div className="container" style={{ maxWidth: 480, padding: "40px 16px" }}>
+        {message && (
+          <div className="card" style={{ marginBottom: 12, background: "#fff7ed", border: "1px solid #fdba74" }}>
+            {message}
           </div>
         )}
 
-        <form className="card" onSubmit={submit} style={{ padding: 18 }}>
-          <h2 style={{ marginTop: 0 }}>{isSignup ? "Account aanmaken" : "Log in"}</h2>
+        {verifying && (
+          <div className="card" style={{ marginBottom: 12 }}>
+            Sessie controleren…
+          </div>
+        )}
+
+        <form className="card" onSubmit={onSubmit}>
+          <h2>{isSignup ? "Account aanmaken" : "Inloggen"}</h2>
 
           {isSignup && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <input className="input" placeholder="Voornaam (optioneel)" value={first} onChange={(e) => setFirst(e.target.value)} autoComplete="given-name" />
-              <input className="input" placeholder="Achternaam (optioneel)" value={last} onChange={(e) => setLast(e.target.value)} autoComplete="family-name" />
-            </div>
+            <>
+              <input
+                className="input"
+                placeholder="Voornaam"
+                value={first}
+                onChange={(e) => setFirst(e.target.value)}
+              />
+              <input
+                className="input"
+                placeholder="Achternaam"
+                value={last}
+                onChange={(e) => setLast(e.target.value)}
+              />
+            </>
           )}
 
           <input
@@ -168,67 +195,48 @@ export default function AuthPage({ mode = "login", onAuthed }) {
             placeholder="E-mailadres"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            style={{ marginTop: 10 }}
-            autoComplete="email"
             required
-            aria-invalid={!emailOk ? "true" : "false"}
           />
 
-          <div style={{ position: "relative", marginTop: 10 }}>
+          <div style={{ position: "relative" }}>
             <input
               className="input"
               type={showPass ? "text" : "password"}
-              placeholder="Wachtwoord (min. 6 tekens)"
-              value={pass}
-              onChange={(e) => setPass(e.target.value)}
-              autoComplete={isSignup ? "new-password" : "current-password"}
+              placeholder="Wachtwoord"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
-              aria-invalid={!passOk ? "true" : "false"}
             />
             <button
               type="button"
-              onClick={() => setShowPass(v => !v)}
+              onClick={() => setShowPass((v) => !v)}
               className="btn btn-outline"
-              style={{ position: "absolute", right: 6, top: 6, padding: "6px 10px", fontSize: 12 }}
-              aria-label={showPass ? "Verberg wachtwoord" : "Toon wachtwoord"}
-              tabIndex={-1}
+              style={{ position: "absolute", right: 6, top: 6 }}
             >
               {showPass ? "Verberg" : "Toon"}
             </button>
           </div>
 
-          {/* Onthoud mij */}
-          <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, userSelect: "none" }}>
-            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-            <span>Onthoud mij op dit apparaat</span>
+          <label style={{ display: "flex", gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+            />
+            Onthoud mij
           </label>
 
-          <button
-            className="btn"
-            type="submit"
-            disabled={!canSubmit}
-            aria-busy={pending ? "true" : "false"}
-            style={{ width: "100%", marginTop: 12, opacity: canSubmit ? 1 : 0.7 }}
-          >
-            {pending ? (isSignup ? "Aanmaken..." : "Inloggen...") : isSignup ? "Account aanmaken" : "Log in"}
+          <button className="btn" type="submit" disabled={!canSubmit}>
+            {pending ? "Bezig…" : isSignup ? "Account aanmaken" : "Inloggen"}
           </button>
 
-          <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+          <div style={{ marginTop: 12, textAlign: "center" }}>
             {isSignup ? (
-              <Link className="btn btn-outline" to="/login">Ik heb al een account</Link>
+              <Link to="/auth?mode=login">Ik heb al een account</Link>
             ) : (
-              <Link className="btn btn-outline" to="/signup">Nieuw account</Link>
+              <Link to="/auth?mode=signup">Nieuw account</Link>
             )}
           </div>
-
-          {!isSignup && (
-            <div style={{ textAlign: "center", marginTop: 8 }}>
-              <Link to="/forgot" style={{ textDecoration: "none", color: "var(--brand-2, #2563eb)" }}>
-                Wachtwoord vergeten?
-              </Link>
-            </div>
-          )}
         </form>
       </div>
     </div>

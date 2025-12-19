@@ -1,0 +1,62 @@
+{
+  "type": "FeatureCollection",
+  "name": "amsterdam_parking",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "id": "NL-AMS-101", "naam": "Centrum-West", "sector": "AMS-1" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [4.8952, 52.3762],
+          [4.8992, 52.3722],
+          [4.8952, 52.3682],
+          [4.8912, 52.3722],
+          [4.8952, 52.3762]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "NL-AMS-102", "naam": "Centrum-Oost", "sector": "AMS-2" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [4.9052, 52.3762],
+          [4.9092, 52.3722],
+          [4.9052, 52.3682],
+          [4.9012, 52.3722],
+          [4.9052, 52.3762]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "NL-AMS-103", "naam": "De Pijp / Zuid", "sector": "AMS-3" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [4.8952, 52.3662],
+          [4.8992, 52.3622],
+          [4.8952, 52.3582],
+          [4.8912, 52.3622],
+          [4.8952, 52.3662]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "NL-AMS-104", "naam": "Westerpark", "sector": "AMS-4" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [4.8832, 52.3742],
+          [4.8872, 52.3702],
+          [4.8832, 52.3662],
+          [4.8792, 52.3702],
+          [4.8832, 52.3742]
+        ]]
+      }
+    }
+  ]
+}

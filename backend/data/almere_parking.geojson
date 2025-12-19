@@ -1,0 +1,62 @@
+{
+  "type": "FeatureCollection",
+  "name": "almere_parking",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "id": "NL-ALM-201", "naam": "Noorderplassen-West", "sector": "ALM-1" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [5.2140, 52.4160],
+          [5.2180, 52.4120],
+          [5.2140, 52.4080],
+          [5.2100, 52.4120],
+          [5.2140, 52.4160]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "NL-ALM-202", "naam": "Noorderplassen-Oost", "sector": "ALM-2" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [5.2320, 52.4160],
+          [5.2360, 52.4120],
+          [5.2320, 52.4080],
+          [5.2280, 52.4120],
+          [5.2320, 52.4160]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "NL-ALM-203", "naam": "Hoge Vaart / Parkwijk", "sector": "ALM-3" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [5.2140, 52.3960],
+          [5.2180, 52.3920],
+          [5.2140, 52.3880],
+          [5.2100, 52.3920],
+          [5.2140, 52.3960]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "NL-ALM-204", "naam": "Boulevard / Stadshart", "sector": "ALM-4" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [5.2320, 52.3960],
+          [5.2360, 52.3920],
+          [5.2320, 52.3880],
+          [5.2280, 52.3920],
+          [5.2320, 52.3960]
+        ]]
+      }
+    }
+  ]
+}

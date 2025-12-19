@@ -1,9 +1,8 @@
-// server.js — FuellinQ backend (CommonJS, allowlist CORS + dynamic routers)
+// server.js — FuellinQ backend (CommonJS, allowlist CORS + public router vóór guard)
 require("dotenv").config();
-
+const klaviyoRouter = require("./routes/klaviyo");
 const path = require("path");
 const fs = require("fs");
-const { randomUUID } = require("crypto");
 
 const express = require("express");
 const cors = require("cors");
@@ -16,7 +15,7 @@ const ExcelJS = require("exceljs");
 const nodemailer = require("nodemailer");
 const Stripe = require("stripe");
 
-// DB pool (./db/pool.js bestaat al bij jou)
+// DB pool
 const pool = require("./db/pool");
 
 /* ───────────────── App & basisconfig ───────────────── */
@@ -28,11 +27,13 @@ const WEB_BASE_URL = (process.env.WEB_BASE_URL || "http://localhost:5173").repla
 const SECURE_COOKIES   = String(process.env.SECURE_COOKIES || "false") === "true";
 const COOKIE_DOMAIN    = process.env.COOKIE_DOMAIN || undefined; // bv ".fuellinq.app" in prod
 const COOKIE_PATH      = process.env.COOKIE_PATH || "/";
-const COOKIE_SAMESITE  = process.env.COOKIE_SAMESITE || (SECURE_COOKIES ? "None" : "Lax");
+const COOKIE_SAMESITE  = (process.env.COOKIE_SAMESITE || (SECURE_COOKIES ? "none" : "lax")).toLowerCase();
 const COOKIE_NAME      = process.env.COOKIE_NAME || "token";
+const COOKIE_MAX_AGE_DAYS = Number(process.env.COOKIE_MAX_AGE_DAYS || 7);
+const COOKIE_MAX_AGE_MS = COOKIE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 
 // achter Railway/edge proxies is dit nodig voor correcte cookies/SSL
-app.set("trust proxy", true);
+app.set("trust proxy", 1);
 
 /* ───────────────── CORS (BOVEN ALLES!) ───────────────── */
 const RAW = String(process.env.CORS_ORIGIN || "");
@@ -57,7 +58,8 @@ function originAllowed(origin) {
         const domain = rule.slice(2); // netlify.app
         return host === domain || host.endsWith(`.${domain}`);
       }
-      return rule === protoHost; // exacte match
+      // exact protocol+host match
+      return rule === protoHost;
     });
   } catch {
     return false;
@@ -78,16 +80,19 @@ app.use(cors({
 }));
 app.options("*", cors());
 app.use(cookieParser());
-
+app.use("/api/klaviyo", klaviyoRouter);
 console.log("CORS allowlist:", ALLOWED.join(", "));
 
 /* ───────────────── Cookie helpers ───────────────── */
 function cookieOptions() {
+  // Browsers weigeren SameSite=None zonder secure
+  const secure = COOKIE_SAMESITE === "none" ? true : SECURE_COOKIES;
   const opts = {
     httpOnly: true,
-    secure: SECURE_COOKIES,
-    sameSite: COOKIE_SAMESITE, // "None" vereist Secure=true
+    secure,
+    sameSite: COOKIE_SAMESITE,     // 'lax' | 'strict' | 'none'
     path: COOKIE_PATH,
+    maxAge: COOKIE_MAX_AGE_MS,     // 7 dagen (default)
   };
   if (COOKIE_DOMAIN) opts.domain = COOKIE_DOMAIN;
   return opts;
@@ -187,6 +192,53 @@ if (stripe) {
 /* ───────────────── Parsers (ná Stripe RAW) ───────────────── */
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+// In backend/server.js — NA express.json() en cookieParser()
+const klaviyo = require("./services/klaviyo");
+
+// Health/test route
+app.post("/api/test/klaviyo", async (req, res) => {
+  try {
+    const { email, firstName, event = "Wallet Confirmed" } = req.body || {};
+    if (!email) return res.status(400).json({ error: "email ontbreekt" });
+
+    const profile = await klaviyo.subscribeUser({
+      email,
+      firstName,
+      properties: { source: "FuelLinq Test" },
+    });
+
+    const evt = await klaviyo.trackEvent({
+      eventName: event,
+      email,
+      properties: { demo: true, time: Date.now() },
+    });
+
+    res.json({ ok: true, profile, event: evt });
+  } catch (e) {
+    console.error("/api/test/klaviyo error:", e?.response?.data || e?.message || e);
+    res.status(500).json({ error: "Klaviyo test failed", detail: e?.response?.data || e?.message });
+  }
+});
+
+/* ───────────────── RDW router (PUBLIC, vroeg mounten) ───────────────── */
+(function mountRDW() {
+  const tryPaths = [
+    "./routes/rdw",
+    path.join(__dirname, "routes/rdw"),
+    path.join(__dirname, "backend/routes/rdw"), // fallback indien projectstructuur anders is
+  ];
+  let router = null, from = null, lastErr = null;
+  for (const p of tryPaths) {
+    try { router = require(p); from = p; break; }
+    catch (e) { if (e.code !== "MODULE_NOT_FOUND") lastErr = e; }
+  }
+  if (router) {
+    app.use("/api/rdw", router);
+    console.log("🟢 RDW router mounted from", from, "→ /api/rdw (PUBLIC)");
+  } else {
+    console.warn("⚠️ RDW router niet gevonden op", tryPaths, lastErr ? `\nLast error: ${lastErr.message}` : "");
+  }
+})();
 
 /* ───────────────── Publieke health/db debug ───────────────── */
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
@@ -197,7 +249,7 @@ app.get("/health/db", async (_req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get("/api/ping", (_req, res) => res.json({ pong: true, ts: Date.now() }));
-app.get("/__debug/headers", (req, res) => res.json({ auth: req.headers.authorization || null }));
+app.get("/__debug/headers", (req, res) => res.json({ origin: req.headers.origin || null, auth: req.headers.authorization || null, cookies: Object.keys(req.cookies || {}) }));
 
 /* ───────────────── Static (publiek) ───────────────── */
 const UPLOAD_DIR = path.join(__dirname, "uploads");
@@ -209,6 +261,16 @@ const WALLET_DIR = path.join(__dirname, "public", "wallet-pass");
 if (fs.existsSync(WALLET_DIR)) app.use("/wallet-pass", express.static(WALLET_DIR, { maxAge: "1d" }));
 if (fs.existsSync(path.join(__dirname, "public", "offers")))
   app.use("/offers", express.static(path.join(__dirname, "public", "offers"), { maxAge: "1d" }));
+
+/* ───────────────── Toll & Parking (PUBLIC) ───────────────── */
+const tollRoutes = safeRequire("./routes/toll");
+if (tollRoutes) app.use("/api/toll", tollRoutes);
+
+const parkingRoutes = safeRequire("./routes/parking");
+if (parkingRoutes) {
+  app.use("/api/parking", parkingRoutes);
+  console.log("🟢 mounted ./routes/parking → /api/parking (PUBLIC)");
+}
 
 /* ───────────────── Multer (uploads) ───────────────── */
 const storage = multer.diskStorage({
@@ -222,14 +284,17 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: { fileSize: 25 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) =>
-    cb(/^(image\/(png|jpe?g|webp|gif|svg\+xml|heic)|video\/mp4)$/i.test(file.mimetype) ? null : new Error("unsupported_type")),
+  fileFilter: (_req, file, cb) => {
+    const ok = /^(image\/(png|jpe?g|webp|gif|svg\+xml|heic)|video\/mp4)$/i.test(file.mimetype);
+    if (ok) return cb(null, true);
+    return cb(new Error("unsupported_type"), false);
+  },
 });
 
 /* ───────────────── JWT helpers ───────────────── */
 function signToken(user) {
   return jwt.sign(
-    { userId: user.id, role: user.role, stationId: user.station_id || null },
+    { userId: user.id, role: user.role, stationId: user.station_id || null, email: user.email },
     process.env.JWT_SECRET || "devsecret",
     { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
   );
@@ -281,17 +346,66 @@ app.post(["/auth/login","/api/auth/login","/login","/api/login"], async (req, re
   } catch (e) { console.error(e); res.status(500).json({ error: "server_error" }); }
 });
 
+// ✅ Echte whoami
 app.get("/api/auth/whoami", (req, res) => {
-  res.json({
-    hasAuthHeader: !!(req.headers.authorization || "").startsWith("Bearer "),
-    cookieTokenPresent:
-      !!req.cookies?.[COOKIE_NAME] || !!req.cookies?.accessToken || !!req.cookies?.token,
-    cookieName: COOKIE_NAME,
-  });
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+
+  // 1) Bearer
+  try {
+    const h = req.headers.authorization || "";
+    if (h.startsWith("Bearer ")) {
+      const user = jwt.verify(h.slice(7), process.env.JWT_SECRET || "devsecret");
+      return res.json({ ok: true, user });
+    }
+  } catch (_) {}
+
+  // 2) Cookie
+  const cookieToken =
+    req.cookies?.[COOKIE_NAME] || req.cookies?.accessToken || req.cookies?.token;
+
+  if (cookieToken) {
+    try {
+      const user = jwt.verify(cookieToken, process.env.JWT_SECRET || "devsecret");
+      return res.json({ ok: true, user });
+    } catch {
+      return res.status(401).json({ error: "invalid_token" });
+    }
+  }
+
+  return res.status(401).json({ error: "missing_token" });
 });
+
 app.post("/api/auth/logout", (req, res) => { clearAuthCookie(res); res.json({ ok: true }); });
 
-/* ───────────────── Dynamische routers uit ./backend/* ───────────────── */
+/* ───────────────── ✅ Publieke partner router vóór guard ───────────────── */
+const partnerPublicMod = safeRequire("./routes/partnerPublic");
+const partnerPublicRouter = pickRouter(partnerPublicMod);
+if (partnerPublicRouter) {
+  app.use("/api/partner/public", partnerPublicRouter);
+  console.log("🟢 mounted ./routes/partnerPublic → /api/partner/public (PUBLIC)");
+} else {
+  // Fallback: iig stations (PUBLIC)
+  app.get("/api/partner/public/stations", async (_req, res) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, COALESCE(name,'') AS name, COALESCE(city,'') AS city,
+                COALESCE(lat,0)::float AS lat, COALESCE(lng,0)::float AS lng
+           FROM stations
+           WHERE active IS TRUE
+           ORDER BY name ASC
+           LIMIT 1000`
+      );
+      res.json({ stations: rows });
+    } catch (e) {
+      console.warn("partner/public/stations fallback error:", e.message);
+      res.json({ stations: [] });
+    }
+  });
+  console.log("🟢 fallback route actief: GET /api/partner/public/stations (PUBLIC)");
+}
+
+/* ───────────────── Dynamische routers (beschermde en overige) ───────────────── */
 function pickRouter(mod) {
   if (!mod) return null;
   if (typeof mod === "function") return mod;
@@ -299,30 +413,27 @@ function pickRouter(mod) {
   if (mod && typeof mod.default === "function") return mod.default;
   return null;
 }
+function safeRequire(p) {
+  try { return require(p); } catch (e) { if (e.code !== "MODULE_NOT_FOUND") console.warn(`⚠️  fout bij laden ${p}:`, e.message); return null; }
+}
 
 [
-  { path: "/api/auth",    file: "./backend/auth" },     // extra auth routes, optioneel
-  { path: "/api/partner", file: "./backend/partner" },
-  { path: "/api/co2",     file: "./backend/co2" },
-  { path: "/api/rdw",     file: "./backend/rdw" },      // optioneel
-  { path: "/api",         file: "./backend/stations" }, // optioneel
-  { path: "/api",         file: "./backend/index" },    // optioneel
+  { path: "/api/auth",    file: "./routes/auth" },
+  { path: "/api/partner", file: "./routes/partner" },
+  { path: "/api/co2",     file: "./routes/co2" },
+  // RDW is al publiek en vroeg gemount, dus hier NIET nogmaals mounten
+  { path: "/api",         file: "./routes/stations" },
+  { path: "/api",         file: "./routes/index" },
 ].forEach(({ path, file }) => {
-  try {
-    const mod = require(file);
-    const router = pickRouter(mod);
-    if (router) {
-      app.use(path, router);
-      console.log(`🧩 mounted ${file} → ${path}`);
-    } else {
-      console.warn(`⚠️  ${file} gevonden maar exporteert geen Router`);
-    }
-  } catch (e) {
-    if (e.code === "MODULE_NOT_FOUND") {
-      console.warn(`↷ skip ${file} (bestaat niet)`);
-    } else {
-      console.warn(`⚠️  fout bij laden ${file}:`, e.message);
-    }
+  const mod = safeRequire(file);
+  const router = pickRouter(mod);
+  if (router) {
+    app.use(path, router);
+    console.log(`🧩 mounted ${file} → ${path}`);
+  } else if (mod === null) {
+    console.warn(`↷ skip ${file} (bestaat niet)`);
+  } else {
+    console.warn(`⚠️  ${file} gevonden maar exporteert geen Router`);
   }
 });
 
@@ -330,6 +441,7 @@ function pickRouter(mod) {
 function isPublicPath(p) {
   const pathOnly = (String(p || "").split("?")[0] || "/").replace(/\/+$/, "") || "/";
   return (
+    /^\/api\/test\/klaviyo$/i.test(pathOnly) ||
     /^\/(?:api\/)?auth(?:\/.*)?$/i.test(pathOnly) ||
     /^\/webhooks\/stripe(?:\/.*)?$/i.test(pathOnly) ||
     /^\/uploads(?:\/.*)?$/i.test(pathOnly) ||
@@ -338,74 +450,56 @@ function isPublicPath(p) {
     /^\/api\/co2\/vehicle\/lookup$/i.test(pathOnly) ||
     /^\/api\/co2\/vehicle\/[^/]+\/report$/i.test(pathOnly) ||
     /^\/api\/rdw(?:\/.*)?$/i.test(pathOnly) ||
-    /^\/api\/partner\/health$/i.test(pathOnly)
+    /^\/api\/partner\/health$/i.test(pathOnly) ||
+    /^\/api\/partner\/public(?:\/.*)?$/i.test(pathOnly) ||
+    /^\/api\/parking(?:\/.*)?$/i.test(pathOnly) ||
+    /^\/api\/toll(?:\/.*)?$/i.test(pathOnly)
   );
 }
 
 function authMaybe(req, res, next) {
   if (req.method === "OPTIONS") return next();
+
   const fullA = req.originalUrl || "";
   const fullB = (req.baseUrl || "") + (req.path || "");
-  if (isPublicPath(fullA) || isPublicPath(fullB)) return next();
+  const aPub = isPublicPath(fullA);
+  const bPub = isPublicPath(fullB);
+  if (aPub || bPub) return next();
 
+  // 1) Probeer Bearer
   const h = req.headers.authorization || "";
   if (h.startsWith("Bearer ")) {
-    try { req.user = jwt.verify(h.slice(7), process.env.JWT_SECRET || "devsecret"); return next(); }
-    catch { return res.status(401).json({ error: "invalid_token" }); }
+    try {
+      req.user = jwt.verify(h.slice(7), process.env.JWT_SECRET || "devsecret");
+      return next();
+    } catch (e) {
+      console.warn("GUARD: invalid Bearer → probeer cookie", { fullA, fullB, reason: e?.message });
+    }
   }
+
+  // 2) Cookie
   const cookieToken = req.cookies?.[COOKIE_NAME] || req.cookies?.accessToken || req.cookies?.token;
   if (cookieToken) {
-    try { req.user = jwt.verify(cookieToken, process.env.JWT_SECRET || "devsecret"); return next(); }
-    catch { return res.status(401).json({ error: "invalid_token" }); }
+    try {
+      req.user = jwt.verify(cookieToken, process.env.JWT_SECRET || "devsecret");
+      return next();
+    } catch {
+      console.warn("GUARD 401 invalid cookie", { fullA, fullB, cookies: Object.keys(req.cookies || {}) });
+      return res.status(401).json({ error: "invalid_token" });
+    }
   }
-  console.warn("GUARD 401", { method: req.method, originalUrl: req.originalUrl, baseUrl: req.baseUrl, path: req.path });
+
+  console.warn("GUARD 401", { method: req.method, fullA, fullB, aPub, bPub, cookies: Object.keys(req.cookies || {}) });
   return res.status(401).json({ error: "missing_token" });
 }
-app.use("/api", authMaybe);
 
-/* ───────────────── Voorbeeld beschermde API ───────────────── */
-app.get("/api/vehicles", async (_req, res) => {
-  const q = await pool.query(
-    `SELECT id, plate, label, limit_daily as "limitDaily", geofence_required as "geofenceRequired"
-       FROM vehicles
-      ORDER BY id DESC`
-  );
-  res.json(q.rows);
-});
-app.post("/api/vehicles", async (req, res) => {
-  const { plate, label, limitDaily = 0, geofenceRequired = false } = req.body || {};
-  if (!plate) return res.status(400).json({ error: "missing_plate" });
-  const ins = await pool.query(
-    `INSERT INTO vehicles (company_id, plate, label, limit_daily, geofence_required)
-     VALUES (null, $1, $2, $3, $4)
-     RETURNING id, plate, label, limit_daily as "limitDaily", geofence_required as "geofenceRequired"`,
-    [plate, label || "", Number(limitDaily) || 0, !!geofenceRequired]
-  );
-  res.status(201).json(ins.rows[0]);
-});
-app.put("/api/vehicles/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { label, limitDaily = 0, geofenceRequired = false } = req.body || {};
-    const { rowCount, rows } = await pool.query(
-      `UPDATE vehicles
-          SET label=$1, limit_daily=$2, geofence_required=$3
-        WHERE id=$4
-      RETURNING id, plate, label, limit_daily as "limitDaily", geofence_required as "geofenceRequired"`,
-      [label || "", Number(limitDaily) || 0, !!geofenceRequired, id]
-    );
-    if (rowCount === 0) return res.status(404).json({ error: "not_found" });
-    res.json(rows[0]);
-  } catch (e) { console.error(e); res.status(500).json({ error: "update_failed" }); }
-});
-app.delete("/api/vehicles/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { rowCount } = await pool.query("DELETE FROM vehicles WHERE id=$1", [id]);
-    if (rowCount === 0) return res.status(404).json({ error: "not_found" });
-    res.json({ ok: true });
-  } catch (e) { console.error(e); res.status(500).json({ error: "delete_failed" }); }
-});
+// Guard activeren voor alles onder /api dat niet al eerder (publiek) is afgehandeld
+app.use("/api", authMaybe);
+app.use("/api/test", require("./routes/testKlaviyo"));
+
+/* ───────────────── Vehicles (beschermd via aparte router) ───────────────── */
+const vehiclesRouter = require("./routes/vehicles");
+app.use("/api/vehicles", vehiclesRouter);
 
 /* ───────────────── Cards/wallet (beschermd) ───────────────── */
 app.get("/api/cards", async (req, res) => {
@@ -757,7 +851,7 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ FuellinQ backend running on :${PORT}`);
   console.log(`🌍 Frontend: ${WEB_BASE_URL}`);
   console.log(`CORS origins: ${ALLOWED.join(", ")}`);
-  console.log("Publiek: /health, /health/db, /_health, /db/ping, /api/ping, /uploads/*, /webhooks/stripe");
+  console.log("Publiek: /health, /health/db, /_health, /db/ping, /api/ping, /uploads/*, /webhooks/stripe, /api/rdw/*, /api/parking/*, /api/toll/*, /api/partner/public/*");
   console.log("Auth publiek: /auth/*, /api/auth/*, /api/auth/whoami, /api/auth/logout");
   console.log("CO2 publiek: /api/co2/vehicle/lookup, /api/co2/vehicle/:plate/report");
 });
@@ -782,9 +876,4 @@ async function findUserByEmail(email) {
     [email]
   );
   return q.rows[0] || null;
-}
-function _tokenFrom(req) {
-  const h = req.headers.authorization || "";
-  const m = h.match(/^Bearer\s+(.+)$/i);
-  return m ? m[1] : "anon";
 }
