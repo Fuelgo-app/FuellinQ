@@ -71,8 +71,7 @@ function applyBrandFromLocalStorage() {
     const root = document.documentElement;
     const css = getComputedStyle(root);
     const accent = (css.getPropertyValue("--accent") || "").trim() || "#0b3654";
-    const accent2 =
-      (css.getPropertyValue("--accent-2") || "").trim() || "#f58220";
+    const accent2 = (css.getPropertyValue("--accent-2") || "").trim() || "#f58220";
     root.style.setProperty("--brand-primary", accent);
     root.style.setProperty("--brand-secondary", accent2);
   } catch {}
@@ -100,13 +99,7 @@ function ProgressSteps({ step }) {
     { n: 3, label: "Wallet" },
   ];
   return (
-    <div
-      style={{
-        background: "#f8fafc",
-        borderTop: "1px solid #eef2f7",
-        borderBottom: "1px solid #eef2f7",
-      }}
-    >
+    <div style={{ background: "#f8fafc", borderTop: "1px solid #eef2f7", borderBottom: "1px solid #eef2f7" }}>
       <div className="container" style={{ maxWidth: 920, margin: "0 auto", padding: "12px 16px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
           {items.map((it) => {
@@ -234,20 +227,8 @@ function ResetPasswordPage() {
         <h3 style={{ marginTop: 0 }}>Wachtwoord resetten</h3>
         <p className="muted">Token: <b>{token}</b></p>
         <form onSubmit={(e) => e.preventDefault()}>
-          <input
-            type="password"
-            required
-            placeholder="Nieuw wachtwoord"
-            className="input"
-            style={{ width: "100%", marginBottom: 12 }}
-          />
-          <input
-            type="password"
-            required
-            placeholder="Herhaal wachtwoord"
-            className="input"
-            style={{ width: "100%", marginBottom: 12 }}
-          />
+          <input type="password" required placeholder="Nieuw wachtwoord" className="input" style={{ width: "100%", marginBottom: 12 }} />
+          <input type="password" required placeholder="Herhaal wachtwoord" className="input" style={{ width: "100%", marginBottom: 12 }} />
           <button className="btn" type="submit">Reset wachtwoord</button>
         </form>
       </div>
@@ -297,7 +278,6 @@ function AppLayout() {
             Info
           </div>
           <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
-            {/* ✅ PUBLIC: /about en /contact zijn publieke routes */}
             <li><NavLink to="/about" className={link}>ℹ️ &nbsp;Over ons</NavLink></li>
             <li><NavLink to="/contact" className={link}>📞 &nbsp;Contact</NavLink></li>
           </ul>
@@ -360,8 +340,24 @@ function CheckoutCancelPage() {
   );
 }
 
+/* ----------------- 404 pagina (BELANGRIJK: geen redirect-loop) ----------------- */
+function NotFoundPage() {
+  return (
+    <div className="container" style={{ padding: 32 }}>
+      <h2>Pagina niet gevonden</h2>
+      <p>Deze pagina bestaat niet (meer).</p>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <Link className="btn" to="/">Terug naar home</Link>
+        <Link className="btn btn-outline" to="/app">Naar dashboard</Link>
+      </div>
+    </div>
+  );
+}
+
 /* ----------------- Routes ----------------- */
 function AppRoutes() {
+  const location = useLocation();
+
   useEffect(() => {
     applyBrandFromLocalStorage();
   }, []);
@@ -374,20 +370,16 @@ function AppRoutes() {
 
   return (
     <AppErrorBoundary>
-      <Routes>
+      {/* key={location.pathname} voorkomt rare hergebruik/redirect edge-cases */}
+      <Routes key={location.pathname}>
         {/* ===================== PUBLIC ===================== */}
         <Route path="/" element={<HomeWrapper />} />
-
-        {/* ✅ Publieke info pages: GEEN auth */}
         <Route path="/about" element={<AboutPage />} />
         <Route path="/contact" element={<ContactPage />} />
-
         <Route path="/eu-agenda" element={<EUAgendaPage />} />
         <Route path="/page/:slug" element={<Publicpage />} />
         <Route path="/demo" element={<DemoPage />} />
         <Route path="/greendeal" element={<GreenDealPage />} />
-
-        {/* ✅ Parking publiek (zoals jij nu had) */}
         <Route path="/parking" element={<Parking />} />
 
         {/* ===================== AUTH ===================== */}
@@ -398,7 +390,6 @@ function AppRoutes() {
         <Route path="/reset" element={<ResetPasswordPage />} />
 
         {/* ===================== ONBOARDING ===================== */}
-        {/* (jij kunt dit ook onder RequireAuth zetten als je wilt; nu laat ik jouw setup intact) */}
         <Route
           path="/onboarding/bank"
           element={
@@ -430,82 +421,15 @@ function AppRoutes() {
             </RequireAuth>
           }
         >
-          <Route
-            index
-            element={
-              <Suspense fallback={<div className="card p-3">Dashboard laden…</div>}>
-                <PartnerHome />
-              </Suspense>
-            }
-          />
-
-          <Route
-            path="prices"
-            element={
-              <Suspense fallback={<div className="card p-3">Prijzen laden…</div>}>
-                <PricesPage />
-              </Suspense>
-            }
-          />
-
-          <Route
-            path="offers"
-            element={
-              <Suspense fallback={<div className="card p-3">Aanbiedingen laden…</div>}>
-                <OffersPage />
-              </Suspense>
-            }
-          />
-          <Route
-            path="offers/new"
-            element={
-              <Suspense fallback={<div className="card p-3">Nieuwe aanbieding laden…</div>}>
-                <OffersNew />
-              </Suspense>
-            }
-          />
-          <Route
-            path="offers/:id"
-            element={
-              <Suspense fallback={<div className="card p-3">Aanbieding laden…</div>}>
-                <OffersEdit />
-              </Suspense>
-            }
-          />
-
-          <Route
-            path="stations"
-            element={
-              <Suspense fallback={<div className="card p-3">Stations laden…</div>}>
-                <StationsPage />
-              </Suspense>
-            }
-          />
-          <Route
-            path="stations/new"
-            element={
-              <Suspense fallback={<div className="card p-3">Nieuw station laden…</div>}>
-                <StationsNew />
-              </Suspense>
-            }
-          />
-          <Route
-            path="stations/:id"
-            element={
-              <Suspense fallback={<div className="card p-3">Station bewerken laden…</div>}>
-                <StationsEdit />
-              </Suspense>
-            }
-          />
-
-          <Route
-            path="settings"
-            element={
-              <Suspense fallback={<div className="card p-3">Instellingen laden…</div>}>
-                <PartnerSettings />
-              </Suspense>
-            }
-          />
+          <Route index element={<Suspense fallback={<div className="card p-3">Dashboard laden…</div>}><PartnerHome /></Suspense>} />
+          <Route path="prices" element={<Suspense fallback={<div className="card p-3">Prijzen laden…</div>}><PricesPage /></Suspense>} />
+          <Route path="offers" element={<Suspense fallback={<div className="card p-3">Aanbiedingen laden…</div>}><OffersPage /></Suspense>} />
+          <Route path="offers/new" element={<Suspense fallback={<div className="card p-3">Nieuwe aanbieding laden…</div>}><OffersNew /></Suspense>} />
+          <Route path="offers/:id" element={<Suspense fallback={<div className="card p-3">Aanbieding laden…</div>}><OffersEdit /></Suspense>} />
+          <Route path="stations" element={<Suspense fallback={<div className="card p-3">Stations laden…</div>}><StationsPage /></Suspense>} />
+          <Route path="stations/new" element={<Suspense fallback={<div className="card p-3">Nieuw station laden…</div>}><StationsNew /></Suspense>} />
+          <Route path="stations/:id" element={<Suspense fallback={<div className="card p-3">Station bewerken laden…</div>}><StationsEdit /></Suspense>} />
+          <Route path="settings" element={<Suspense fallback={<div className="card p-3">Instellingen laden…</div>}><PartnerSettings /></Suspense>} />
         </Route>
 
         {/* ===================== APP (PROTECTED) ===================== */}
@@ -530,9 +454,6 @@ function AppRoutes() {
 
           <Route path="wallet" element={<WalletPage />} />
           <Route path="wallet-setup" element={<OnboardingWallet />} />
-
-          {/* (optioneel) als je Parking ook in app wilt tonen */}
-          {/* <Route path="parking" element={<Parking />} /> */}
 
           <Route path="checkout-demo" element={<CheckoutDemoPage />} />
           <Route path="success" element={<CheckoutSuccessPage />} />
@@ -606,7 +527,7 @@ function AppRoutes() {
         </Route>
 
         {/* ===================== FALLBACK ===================== */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </AppErrorBoundary>
   );
