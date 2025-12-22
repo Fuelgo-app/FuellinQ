@@ -1,7 +1,6 @@
 // --- build marker ---
 console.log("[BUILD] main.jsx loaded");
 
-// src/main.jsx
 import "@/api/base";
 
 import React from "react";
@@ -50,6 +49,21 @@ function ScrollToTop() {
   return null;
 }
 
+/* ------------------ Basename AUTO detect ------------------ */
+/**
+ * Jij draait live op: app.fuellinq.app/app
+ * => basename moet dan "/app" zijn.
+ * Lokaal is het gewoon "/".
+ */
+function getBasename() {
+  if (typeof window === "undefined") return "/";
+  return window.location.pathname.startsWith("/app") ? "/app" : "/";
+}
+
+const BASENAME = "/";
+console.log("[ROUTER] basename =", BASENAME);
+
+
 /* ------------------ Global hard-fail overlay (PROD only) ------------------ */
 if (import.meta.env.PROD) {
   (function attachGlobalErrorOverlay() {
@@ -76,8 +90,7 @@ function Root() {
   return (
     <React.StrictMode>
       <ErrorBoundary>
-        {/* ✅ GEEN basename gebruiken */}
-        <BrowserRouter>
+        <BrowserRouter basename={BASENAME}>
           <ScrollToTop />
           <App />
         </BrowserRouter>
